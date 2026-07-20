@@ -1,0 +1,122 @@
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+.env.*
+!.env.example
+
+# ==========================
+# IDEs
+# ==========================
+.vscode/
+.idea/
+
+# ==========================
+# OS Files
+# ==========================
+.DS_Store
+Thumbs.db
+
+# ==========================
+# Python Build
+# ==========================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ==========================
+# Testing
+# ==========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# ==========================
+# Type Checking
+# ==========================
+.mypy_cache/
+.pyre/
+.pytype/
+
+# ==========================
+# Jupyter
+# ==========================
+.ipynb_checkpoints/
+
+# ==========================
+# Logs
+# ==========================
+*.log
+logs/
+
+# ==========================
+# LangGraph Checkpoints
+# ==========================
+checkpoints/
+.sqlite
+*.db
+
+# ==========================
+# Vector Databases
+# ==========================
+chroma_db/
+chromadb/
+.faiss/
+*.faiss
+*.index
+
+# ==========================
+# Temporary Files
+# ==========================
+tmp/
+temp/
+*.tmp
+
+# ==========================
+# Uploaded Files
+# ==========================
+uploads/
+downloads/
+
+# ==========================
+# Generated Data
+# ==========================
+data/
+!data/.gitkeep
+
+# ==========================
+# Secrets
+# ==========================
+secrets/
+credentials.json
+service-account.json
+
+# ==========================
+# Node (if frontend exists)
+# ==========================
+node_modules/
+.next/
+out/
+
+# ==========================
+# Misc
+# ==========================
+*.swp
+*.swo

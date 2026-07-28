@@ -1,0 +1,18 @@
+import tomllib
+
+from ..models import ConfigUnit, UnitType
+
+
+def parse_pyproject(file_path, content):
+
+    data = tomllib.loads(content.decode())
+
+    return [
+        ConfigUnit(
+            file_path=str(file_path),
+            unit_type=UnitType.CONFIG,
+            config_type="pyproject",
+            metadata=data,
+            code_content=content.decode(),
+        )
+    ]

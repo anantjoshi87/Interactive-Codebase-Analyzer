@@ -6,14 +6,14 @@ from typing import Optional
 from .ast_parser import TreeSitterParser
 from .fallback_chunker import FallbackChunker
 from .language_registry import LanguageRegistry
+from .config_parser import ConfigParser
+from .document_parser import DocumentParser
 from .constants import (
     DEFAULT_IGNORED_DIRS,
     DEFAULT_IGNORED_EXTS,
 )
 
-from .config_parser import ConfigParser
 from .models import BaseUnit
-
 
 
 class RepoParser:
@@ -30,6 +30,7 @@ class RepoParser:
         self.registry = LanguageRegistry.get()
         self.ast_parser = TreeSitterParser()
         self.config_parser = ConfigParser()
+        self.document_parser = DocumentParser()
         self.fallback_parser = FallbackChunker()
 
     def parse_repository(self, repo_path: str) -> list[BaseUnit]:
@@ -70,6 +71,14 @@ class RepoParser:
 
                         extracted_units.extend(
                             self.config_parser.parse(
+                                file_path,
+                                code,
+                            )
+                        )
+
+                    elif self.document_parser.supports(file_path):
+                        extracted_units.extend(
+                            self.document_parser.parse(
                                 file_path,
                                 code,
                             )

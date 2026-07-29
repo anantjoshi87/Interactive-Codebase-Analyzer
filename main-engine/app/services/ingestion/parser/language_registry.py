@@ -9,62 +9,101 @@ from tree_sitter import Language
 
 from .models import LanguageConfig
 from .queries import (
-    COMMON_JS_TS_QUERY,
-    COMMON_PY_QUERY,
-    HTML_QUERY,
-    CSS_QUERY,
+    COMMON_PY_SYMBOL_QUERY,
+    COMMON_PY_IMPORT_QUERY,
+    COMMON_PY_GLOBAL_QUERY,
+    COMMON_JS_TS_SYMBOL_QUERY,
+    COMMON_JS_TS_IMPORT_QUERY,
+    COMMON_JS_TS_GLOBAL_QUERY,
+    HTML_SYMBOL_QUERY,
+    HTML_IMPORT_QUERY,
+    HTML_GLOBAL_QUERY,
+    CSS_SYMBOL_QUERY,
+    CSS_IMPORT_QUERY,
+    CSS_GLOBAL_QUERY,
 )
 
 
 class LanguageRegistry:
-    """Stores all Tree-sitter grammars and queries."""
+    """Stores all supported Tree-sitter grammars and queries."""
 
     _registry: dict[str, LanguageConfig] | None = None
 
     @classmethod
     def get(cls) -> dict[str, LanguageConfig]:
+
         if cls._registry is not None:
             return cls._registry
 
-        registry: dict[str, LanguageConfig] = {
-            ".py": LanguageConfig(
-                language=Language(tspython.language()),
-                query=COMMON_PY_QUERY,
+        # ---------------- Python ---------------- #
+
+        py_config = LanguageConfig(
+            language=Language(tspython.language()),
+            symbol_query=COMMON_PY_SYMBOL_QUERY,
+            import_query=COMMON_PY_IMPORT_QUERY,
+            global_query=COMMON_PY_GLOBAL_QUERY,
+        )
+
+        # ---------------- JavaScript / TypeScript ---------------- #
+
+        js_config = LanguageConfig(
+            language=Language(tsjavascript.language()),
+            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
+            import_query=COMMON_JS_TS_IMPORT_QUERY,
+            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+        )
+
+        jsx_config = LanguageConfig(
+            language=Language(
+                tsjavascript.language_jsx()
+                if hasattr(tsjavascript, "language_jsx")
+                else tsjavascript.language()
             ),
-            ".js": LanguageConfig(
-                language=Language(tsjavascript.language()),
-                query=COMMON_JS_TS_QUERY,
-            ),
-            ".ts": LanguageConfig(
-                language=Language(tstypescript.language_typescript()),
-                query=COMMON_JS_TS_QUERY,
-            ),
-            ".tsx": LanguageConfig(
-                language=Language(tstypescript.language_tsx()),
-                query=COMMON_JS_TS_QUERY,
-            ),
-            ".html": LanguageConfig(
-                language=Language(tshtml.language()),
-                query=HTML_QUERY,
-            ),
-            ".css": LanguageConfig(
-                language=Language(tscss.language()),
-                query=CSS_QUERY,
-            ),
+            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
+            import_query=COMMON_JS_TS_IMPORT_QUERY,
+            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+        )
+
+        ts_config = LanguageConfig(
+            language=Language(tstypescript.language_typescript()),
+            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
+            import_query=COMMON_JS_TS_IMPORT_QUERY,
+            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+        )
+
+        tsx_config = LanguageConfig(
+            language=Language(tstypescript.language_tsx()),
+            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
+            import_query=COMMON_JS_TS_IMPORT_QUERY,
+            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+        )
+
+        # ---------------- HTML ---------------- #
+
+        html_config = LanguageConfig(
+            language=Language(tshtml.language()),
+            symbol_query=HTML_SYMBOL_QUERY,
+            import_query=HTML_IMPORT_QUERY,
+            global_query=HTML_GLOBAL_QUERY,
+        )
+
+        # ---------------- CSS ---------------- #
+
+        css_config = LanguageConfig(
+            language=Language(tscss.language()),
+            symbol_query=CSS_SYMBOL_QUERY,
+            import_query=CSS_IMPORT_QUERY,
+            global_query=CSS_GLOBAL_QUERY,
+        )
+
+        cls._registry = {
+            ".py": py_config,
+            ".js": js_config,
+            ".jsx": jsx_config,
+            ".ts": ts_config,
+            ".tsx": tsx_config,
+            ".html": html_config,
+            ".css": css_config,
         }
 
-        # Add JSX support if the installed package exposes it
-        if hasattr(tsjavascript, "language_jsx"):
-            registry[".jsx"] = LanguageConfig(
-                language=Language(tsjavascript.language_jsx()),
-                query=COMMON_JS_TS_QUERY,
-            )
-        else:
-            # Fallback to the normal JavaScript grammar
-            registry[".jsx"] = LanguageConfig(
-                language=Language(tsjavascript.language()),
-                query=COMMON_JS_TS_QUERY,
-            )
-
-        cls._registry = registry
         return cls._registry

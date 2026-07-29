@@ -1,19 +1,25 @@
 from enum import Enum
+from typing import Literal
 from pydantic import BaseModel
 from tree_sitter import Language
 
 
 class LanguageConfig(BaseModel):
     language: Language
-    query: str
 
-    model_config = {"arbitrary_types_allowed": True}
+    symbol_query: str
+    import_query: str
+    global_query: str
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+    }
 
 
 class UnitType(str, Enum):
     CODE = "code"
     CONFIG = "config"
-    DOCUMENTATION = "documentation"
+    DOCUMENT = "document"
     TEXT = "text"
 
 
@@ -22,7 +28,12 @@ class BaseUnit(BaseModel):
     unit_type: UnitType
     code_content: str
 
-    is_ast_parsed: bool = True
+    is_ast_parsed: bool
+
+
+class CodeMetadata(BaseModel):
+    imports: list[str] = []
+    globals: list[str] = []
 
 
 class CodeUnit(BaseUnit):
@@ -36,6 +47,8 @@ class CodeUnit(BaseUnit):
     start_byte: int
     end_byte: int
 
+    metadata: CodeMetadata = CodeMetadata()
+
 
 class ConfigUnit(BaseUnit):
     config_type: str
@@ -43,3 +56,10 @@ class ConfigUnit(BaseUnit):
     metadata: dict
 
     is_ast_parsed: bool = False
+
+
+class DocumentUnit(BaseUnit):
+    unit_type: Literal[UnitType.DOCUMENT] = UnitType.DOCUMENT
+
+    document_type: str
+    title: str | None = None

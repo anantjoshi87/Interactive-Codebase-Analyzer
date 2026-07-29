@@ -1,10 +1,10 @@
 import json
 from ..models import ConfigUnit, UnitType
-
+from .utils import decode_bytes
 
 def parse_package_json(file_path, content):
 
-    raw = content.decode("utf-8", errors="ignore")
+    raw = decode_bytes(content)
 
     try:
         data = json.loads(raw)

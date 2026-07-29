@@ -9,12 +9,15 @@ from tree_sitter import Language
 
 from .models import LanguageConfig
 from .queries import (
-    COMMON_PY_SYMBOL_QUERY,
-    COMMON_PY_IMPORT_QUERY,
-    COMMON_PY_GLOBAL_QUERY,
-    COMMON_JS_TS_SYMBOL_QUERY,
-    COMMON_JS_TS_IMPORT_QUERY,
-    COMMON_JS_TS_GLOBAL_QUERY,
+    PY_SYMBOL_QUERY,
+    PY_IMPORT_QUERY,
+    PY_GLOBAL_QUERY,
+    JS_SYMBOL_QUERY,
+    JS_IMPORT_QUERY,
+    JS_GLOBAL_QUERY,
+    TS_SYMBOL_QUERY,
+    TS_IMPORT_QUERY,
+    TS_GLOBAL_QUERY,
     HTML_SYMBOL_QUERY,
     HTML_IMPORT_QUERY,
     HTML_GLOBAL_QUERY,
@@ -39,18 +42,18 @@ class LanguageRegistry:
 
         py_config = LanguageConfig(
             language=Language(tspython.language()),
-            symbol_query=COMMON_PY_SYMBOL_QUERY,
-            import_query=COMMON_PY_IMPORT_QUERY,
-            global_query=COMMON_PY_GLOBAL_QUERY,
+            symbol_query=PY_SYMBOL_QUERY,
+            import_query=PY_IMPORT_QUERY,
+            global_query=PY_GLOBAL_QUERY,
         )
 
         # ---------------- JavaScript / TypeScript ---------------- #
 
         js_config = LanguageConfig(
             language=Language(tsjavascript.language()),
-            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
-            import_query=COMMON_JS_TS_IMPORT_QUERY,
-            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+            symbol_query=JS_SYMBOL_QUERY,
+            import_query=JS_IMPORT_QUERY,
+            global_query=JS_GLOBAL_QUERY,
         )
 
         jsx_config = LanguageConfig(
@@ -59,23 +62,23 @@ class LanguageRegistry:
                 if hasattr(tsjavascript, "language_jsx")
                 else tsjavascript.language()
             ),
-            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
-            import_query=COMMON_JS_TS_IMPORT_QUERY,
-            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+            symbol_query=JS_SYMBOL_QUERY,
+            import_query=JS_IMPORT_QUERY,
+            global_query=JS_GLOBAL_QUERY,
         )
 
         ts_config = LanguageConfig(
             language=Language(tstypescript.language_typescript()),
-            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
-            import_query=COMMON_JS_TS_IMPORT_QUERY,
-            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+            symbol_query=TS_SYMBOL_QUERY,
+            import_query=TS_IMPORT_QUERY,
+            global_query=TS_GLOBAL_QUERY,
         )
 
         tsx_config = LanguageConfig(
             language=Language(tstypescript.language_tsx()),
-            symbol_query=COMMON_JS_TS_SYMBOL_QUERY,
-            import_query=COMMON_JS_TS_IMPORT_QUERY,
-            global_query=COMMON_JS_TS_GLOBAL_QUERY,
+            symbol_query=TS_SYMBOL_QUERY,
+            import_query=TS_IMPORT_QUERY,
+            global_query=TS_GLOBAL_QUERY,
         )
 
         # ---------------- HTML ---------------- #
@@ -95,6 +98,8 @@ class LanguageRegistry:
             import_query=CSS_IMPORT_QUERY,
             global_query=CSS_GLOBAL_QUERY,
         )
+
+        # ---------------- Registry ---------------- #
 
         cls._registry = {
             ".py": py_config,

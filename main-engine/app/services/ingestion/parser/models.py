@@ -34,6 +34,11 @@ class BaseUnit(BaseModel):
 class CodeMetadata(BaseModel):
     imports: list[str] = []
     globals: list[str] = []
+    decorators: list[str] = []
+    parent_class: str | None = None
+    docstring: str | None = None
+    calls: list[str] = []
+    references: list[str] = []
 
 
 class CodeUnit(BaseUnit):

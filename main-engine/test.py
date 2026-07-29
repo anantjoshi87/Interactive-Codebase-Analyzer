@@ -8,7 +8,7 @@ from rich.syntax import Syntax
 parser = RepoParser()
 
 # Test repository (or swap with any repo containing both JS/JSX and Python)
-repo_url = "https://github.com/anantjoshi87/smart-study-planner-python.git"
+repo_url = "https://github.com/anantjoshi87/Interactive-Codebase-Analyzer.git"
 
 with RepoFetcher.clone_to_temp(repo_url) as repo_path:
     extracted_units = parser.parse_repository(repo_path)

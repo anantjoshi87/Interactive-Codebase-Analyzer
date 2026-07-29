@@ -1,11 +1,11 @@
 import tomllib
 
 from ..models import ConfigUnit, UnitType
-
+from .utils import decode_bytes
 
 def parse_pyproject(file_path, content):
 
-    data = tomllib.loads(content.decode())
+    data = tomllib.loads(decode_bytes(content))
 
     return [
         ConfigUnit(

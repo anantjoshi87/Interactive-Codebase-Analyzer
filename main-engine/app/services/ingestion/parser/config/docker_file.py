@@ -1,9 +1,9 @@
 from ..models import ConfigUnit, UnitType
-
+from .utils import decode_bytes
 
 def parse_dockerfile(file_path, content):
 
-    raw = content.decode()
+    raw = decode_bytes(content)
 
     return [
         ConfigUnit(

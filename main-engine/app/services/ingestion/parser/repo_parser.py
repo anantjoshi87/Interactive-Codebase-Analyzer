@@ -84,13 +84,13 @@ class RepoParser:
                             )
                         )
 
-                    else:
-                        extracted_units.extend(
-                            self.fallback_parser.parse(
-                                relative_path,
-                                code.decode("utf-8", errors="ignore"),
-                            )
-                        )
+                    # else:
+                    #     extracted_units.extend(
+                    #         self.fallback_parser.parse(
+                    #             relative_path,
+                    #             code.decode("utf-8", errors="ignore"),
+                    #         )
+                    #     )
 
                 except Exception:
                     print(f"\nError parsing {relative_path}")

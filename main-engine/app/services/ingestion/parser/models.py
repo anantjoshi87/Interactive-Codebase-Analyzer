@@ -31,17 +31,50 @@ class BaseUnit(BaseModel):
     is_ast_parsed: bool
 
 
+class ImportReference(BaseModel):
+    module: str
+    imported_name: str | None = None
+    alias: str | None = None
+    target_unit_id: str | None = None
+
+
+class GlobalVariable(BaseModel):
+    name: str
+    value: str | None = None
+    line: int | None = None
+
+
+class Reference(BaseModel):
+    name: str
+    kind: str | None = None
+    target_unit_id: str | None = None
+
+
+class CallReference(BaseModel):
+    callee: str
+    target_unit_id: str | None = None
+    line: int | None = None
+    column: int | None = None
+
+
 class CodeMetadata(BaseModel):
-    imports: list[str] = []
-    globals: list[str] = []
+    imports: list[ImportReference] = []
+    globals: list[GlobalVariable] = []
     decorators: list[str] = []
     parent_class: str | None = None
     docstring: str | None = None
-    calls: list[str] = []
-    references: list[str] = []
+    calls: list[CallReference] = []
+    references: list[Reference] = []
+    inheritance: list[str] = []
+    overrides: list[str] = []
+    annotations: list[str] = []
+    exceptions: list[str] = []
+    returns: str | None = None
 
 
 class CodeUnit(BaseUnit):
+    id: str  # e.g. app/services/parser/repo_parser.py::RepoParser.parse_repository
+
     symbol_name: str | None = None
     symbol_kind: str
     ast_node_type: str

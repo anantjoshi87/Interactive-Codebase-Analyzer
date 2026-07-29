@@ -47,7 +47,7 @@ dist/
 .coverage.*
 htmlcov/
 .cache/
-main-engine/test.py
+test.py
 
 # ==========================
 # Type Checking

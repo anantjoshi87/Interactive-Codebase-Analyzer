@@ -1,5 +1,5 @@
 import json
-from ..models import ConfigUnit, UnitType
+from app.services.ingestion.models import ConfigUnit, UnitType
 from .utils import decode_bytes
 
 def parse_package_json(file_path, content):

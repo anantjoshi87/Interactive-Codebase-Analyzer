@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .models import ConfigUnit
+from app.services.ingestion.models import ConfigUnit
 from .config import (
     parse_package_json,
     parse_env,

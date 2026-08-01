@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal
+from typing import Literal, Any, Type
 from pydantic import BaseModel
 from tree_sitter import Language
 
@@ -10,6 +10,8 @@ class LanguageConfig(BaseModel):
     symbol_query: str
     import_query: str
     global_query: str
+
+    extractor: Type[Any]
 
     model_config = {
         "arbitrary_types_allowed": True,
@@ -27,7 +29,6 @@ class BaseUnit(BaseModel):
     file_path: str
     unit_type: UnitType
     code_content: str
-
     is_ast_parsed: bool
 
 
@@ -40,6 +41,7 @@ class ImportReference(BaseModel):
 
 class GlobalVariable(BaseModel):
     name: str
+    declaration_type: str | None = None
     value: str | None = None
     line: int | None = None
 
@@ -51,6 +53,8 @@ class Reference(BaseModel):
 
 
 class CallReference(BaseModel):
+    receiver: str | None = None
+    method: str
     callee: str
     target_unit_id: str | None = None
     line: int | None = None
@@ -60,24 +64,31 @@ class CallReference(BaseModel):
 class CodeMetadata(BaseModel):
     imports: list[ImportReference] = []
     globals: list[GlobalVariable] = []
-    decorators: list[str] = []
+
     parent_class: str | None = None
     docstring: str | None = None
     calls: list[CallReference] = []
     references: list[Reference] = []
-    inheritance: list[str] = []
     overrides: list[str] = []
     annotations: list[str] = []
-    exceptions: list[str] = []
+
+    # Function / Method
+    decorators: list[str] = []
     returns: str | None = None
+    exceptions: list[str] = []
+
+    # Class
+    inheritance: list[str] = []
 
 
 class CodeUnit(BaseUnit):
-    id: str  # e.g. app/services/parser/repo_parser.py::RepoParser.parse_repository
+    id: str  # e.g., app.py::<module> or app.py::A::B
 
-    symbol_name: str | None = None
-    symbol_kind: str
+    symbol_name: str | None = "<module>"  # Defaults to <module> for script files
+    symbol_kind: str  # "module", "class", "function", "method"
     ast_node_type: str
+
+    parent_symbol_id: str | None = None  # Enables tree-based resolution in GraphDB
 
     start_line: int
     end_line: int

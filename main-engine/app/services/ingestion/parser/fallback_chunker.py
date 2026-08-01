@@ -1,4 +1,4 @@
-from .models import CodeUnit, UnitType
+from app.services.ingestion.models import CodeUnit, UnitType
 
 
 class FallbackChunker:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .models import DocumentUnit
+from app.services.ingestion.models import DocumentUnit
 
 
 class DocumentParser:

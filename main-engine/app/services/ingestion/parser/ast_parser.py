@@ -1,34 +1,32 @@
-from tree_sitter import Parser, Query, QueryCursor
-from .models import (
+from tree_sitter import Parser, Node
+from app.services.ingestion.models import (
     CodeUnit,
     UnitType,
     LanguageConfig,
     CodeMetadata,
-    Reference,
-    ImportReference,
-    GlobalVariable,
 )
-from .constants import SYMBOL_KIND_MAP
+from .extractors.extractor_factory import ExtractorFactory
+from .extractors.base_extractor import BaseExtractor
+from app.services.ingestion.specs.constants import SYMBOL_KIND_MAP
 
 
 class TreeSitterParser:
+
     @staticmethod
     def parse(
-        file_path: str,
-        code_bytes: bytes,
-        lang_config: LanguageConfig,
+        file_path: str, code_bytes: bytes, lang_config: LanguageConfig
     ) -> list[CodeUnit]:
-
         parser = Parser()
         parser.language = lang_config.language
-
         tree = parser.parse(code_bytes)
+        extractor = ExtractorFactory.get_extractor(code_bytes, lang_config)
 
         return TreeSitterParser._extract_symbols(
             tree=tree,
             file_path=file_path,
             code_bytes=code_bytes,
             lang_config=lang_config,
+            extractor=extractor,
         )
 
     @staticmethod
@@ -37,46 +35,58 @@ class TreeSitterParser:
         file_path: str,
         code_bytes: bytes,
         lang_config: LanguageConfig,
+        extractor: BaseExtractor,
     ) -> list[CodeUnit]:
 
-        query = Query(
-            lang_config.language,
-            lang_config.symbol_query,
+        units: dict[str, CodeUnit] = {}
+
+        # 1. Initialize the Base Module (Top of the file)
+        module_id = f"{file_path}::<module>"
+        module_unit = CodeUnit(
+            id=module_id,
+            file_path=file_path,
+            unit_type=UnitType.CODE,
+            symbol_name="<module>",
+            symbol_kind="module",
+            ast_node_type="module",
+            start_line=1,
+            end_line=tree.root_node.end_point[0] + 1,
+            start_byte=tree.root_node.start_byte,
+            end_byte=tree.root_node.end_byte,
+            code_content=code_bytes.decode("utf-8", errors="ignore"),
+            is_ast_parsed=True,
+            metadata=CodeMetadata(),
         )
+        units[module_id] = module_unit
 
-        cursor = QueryCursor(query)
+        # 2. The Scope Stack
+        scope_stack = [module_id]
 
-        units: list[CodeUnit] = []
+        # 3. The AST Visitor
+        def walk(node: Node):
+            current_scope_id = scope_stack[-1]
+            current_unit = units[current_scope_id]
 
-        for _, captures in cursor.matches(tree.root_node):
+            # --- A. Structural Nodes (Classes, Functions) ---
+            if node.type in ("class_definition", "function_definition"):
+                # Use the extractor to get the actual identifier node
+                name = extractor.get_node_name(node)
+                if not name:
+                    return
 
-            node = captures.get("symbol.node", [None])[0]
+                new_id = f"{current_scope_id}::{name}"
+                symbol_kind = "class" if node.type == "class_definition" else "function"
 
-            if node is None:
-                continue
+                # Check if it's a method (function inside a class)
+                if (
+                    symbol_kind == "function"
+                    and units[current_scope_id].symbol_kind == "class"
+                ):
+                    symbol_kind = "method"
 
-            name_node = captures.get("symbol.name", [None])[0]
-
-            name = None
-            if name_node is not None:
-                name = code_bytes[name_node.start_byte : name_node.end_byte].decode(
-                    "utf-8",
-                    errors="ignore",
-                )
-
-            symbol_code = code_bytes[node.start_byte : node.end_byte].decode(
-                "utf-8",
-                errors="ignore",
-            )
-
-            symbol_kind = SYMBOL_KIND_MAP.get(
-                node.type,
-                "unknown",
-            )
-
-            units.append(
-                CodeUnit(
-                    id=f"{file_path}::{name}",
+                new_unit = CodeUnit(
+                    id=new_id,
+                    parent_symbol_id=current_scope_id,
                     file_path=file_path,
                     unit_type=UnitType.CODE,
                     symbol_name=name,
@@ -86,242 +96,55 @@ class TreeSitterParser:
                     end_line=node.end_point[0] + 1,
                     start_byte=node.start_byte,
                     end_byte=node.end_byte,
-                    code_content=symbol_code,
-                    metadata=CodeMetadata(
-                        imports=TreeSitterParser._extract_imports(
-                            tree,
-                            code_bytes,
-                            lang_config,
-                        ),
-                        globals=TreeSitterParser._extract_globals(
-                            tree,
-                            code_bytes,
-                            lang_config,
-                        ),
-                        decorators=TreeSitterParser._extract_decorators(
-                            node,
-                            code_bytes,
-                        ),
-                        parent_class=TreeSitterParser._extract_parent_class(
-                            node,
-                            code_bytes,
-                        ),
-                        docstring=TreeSitterParser._extract_docstring(
-                            node,
-                            code_bytes,
-                        ),
-                        references=TreeSitterParser._extract_references(
-                            node,
-                            code_bytes,
-                        ),
-                        calls=[],
-                        inheritance=[],
-                        overrides=[],
-                        annotations=[],
-                        exceptions=[],
-                        returns=None,
+                    code_content=code_bytes[node.start_byte : node.end_byte].decode(
+                        "utf-8", errors="ignore"
                     ),
                     is_ast_parsed=True,
+                    metadata=CodeMetadata(
+                        docstring=extractor.extract_docstring(node),
+                        decorators=extractor.extract_decorators(node),
+                        # Extract other structural metadata here
+                    ),
                 )
-            )
-
-        return units
-
-    @staticmethod
-    def _extract_imports(
-        tree,
-        code_bytes: bytes,
-        lang_config: LanguageConfig,
-    ) -> list[ImportReference]:
-
-        if not lang_config.import_query.strip():
-            return []
-
-        query = Query(lang_config.language, lang_config.import_query)
-        cursor = QueryCursor(query)
-
-        imports: list[ImportReference] = []
-
-        for _, captures in cursor.matches(tree.root_node):
-
-            node = captures.get("import", [None])[0]
-
-            if node is None:
-                continue
-
-            raw = code_bytes[node.start_byte : node.end_byte].decode(
-                "utf-8",
-                errors="ignore",
-            )
-
-            # Python: import os
-            if raw.startswith("import "):
-                modules = raw.replace("import ", "").split(",")
-
-                for module in modules:
-                    imports.append(
-                        ImportReference(
-                            module=module.strip(),
-                            imported_name=None,
-                            alias=None,
-                            target_unit_id=None,
-                        )
-                    )
-
-            # Python: from x import y,z
-            elif raw.startswith("from "):
-
-                left, right = raw.split(" import ", 1)
-
-                module = left.replace("from ", "").strip()
-
-                for symbol in right.split(","):
-
-                    imports.append(
-                        ImportReference(
-                            module=module,
-                            imported_name=symbol.strip(),
-                            alias=None,
-                            target_unit_id=None,
-                        )
-                    )
-
-        return imports
-
-    @staticmethod
-    def _extract_globals(
-        tree,
-        code_bytes: bytes,
-        lang_config: LanguageConfig,
-    ) -> list[GlobalVariable]:
-
-        if not lang_config.global_query.strip():
-            return []
-
-        query = Query(lang_config.language, lang_config.global_query)
-        cursor = QueryCursor(query)
-
-        globals_: list[GlobalVariable] = []
-
-        for _, captures in cursor.matches(tree.root_node):
-
-            node = captures.get("global", [None])[0]
-
-            if node is None:
-                continue
-
-            text = code_bytes[node.start_byte : node.end_byte].decode(
-                "utf-8",
-                errors="ignore",
-            )
-
-            name = text.split("=")[0].strip() if "=" in text else text.strip()
-
-            globals_.append(
-                GlobalVariable(
-                    name=name,
-                    value=text,
-                    line=node.start_point[0] + 1,
-                )
-            )
-
-        return globals_
-
-    @staticmethod
-    def _extract_decorators(node, code_bytes):
-
-        decorators = []
-
-        for child in node.children:
-
-            if child.type == "decorated_definition":
-
-                for c in child.children:
-
-                    if c.type == "decorator":
-
-                        decorators.append(
-                            code_bytes[c.start_byte : c.end_byte].decode(
-                                "utf-8",
-                                errors="ignore",
-                            )
-                        )
-
-        return decorators
-
-    @staticmethod
-    def _extract_parent_class(node, code_bytes):
-
-        parent = node.parent
-
-        while parent is not None:
-
-            if parent.type == "class_definition":
-
-                for child in parent.children:
-
-                    if child.type == "identifier":
-
-                        return code_bytes[child.start_byte : child.end_byte].decode(
-                            "utf-8", errors="ignore"
-                        )
-
-            parent = parent.parent
-
-        return None
-
-    @staticmethod
-    def _extract_docstring(node, code_bytes):
-
-        body = None
-
-        for child in node.children:
-
-            if child.type == "block":
-                body = child
-                break
-
-        if body is None:
-            return None
-
-        for child in body.children:
-
-            if child.type == "expression_statement":
-
-                for grand in child.children:
-
-                    if grand.type == "string":
-
-                        return code_bytes[grand.start_byte : grand.end_byte].decode(
-                            "utf-8",
-                            errors="ignore",
-                        )
-
-                break
-
-        return None
-
-    @staticmethod
-    def _extract_references(node, code_bytes):
-
-        references = []
-
-        # def dfs(n):
-
-        #     if n.type == "identifier":
-
-        #         references.append(
-        #             Reference(
-        #                 name=code_bytes[n.start_byte : n.end_byte].decode(
-        #                     "utf-8",
-        #                     errors="ignore",
-        #                 )
-        #             )
-        #         )
-
-        #     for child in n.children:
-        #         dfs(child)
-
-        # dfs(node)
-
-        return references
+                units[new_id] = new_unit
+
+                # Push to stack, process children, then pop
+                scope_stack.append(new_id)
+                for child in node.children:
+                    walk(child)
+                scope_stack.pop()
+
+            # --- B. Scoped Metadata Nodes (Imports, Globals, Calls) ---
+            elif node.type in ("import_statement", "import_from_statement"):
+                imports = extractor.parse_import_node(node)
+                current_unit.metadata.imports.extend(imports)
+
+            elif node.type == "assignment":
+                if len(scope_stack) == 1:
+                    # We are at the module level, so this is a global variable
+                    global_vars = extractor.parse_assignment_node(node)
+                    current_unit.metadata.globals.extend(global_vars)
+
+                # We MUST walk the children to catch calls like `unit.process()`
+                # that exist on the right side of the equals sign!
+                for child in node.children:
+                    walk(child)
+
+            elif node.type == "call":
+                call_ref = extractor.parse_call_node(node)
+                if call_ref:
+                    current_unit.metadata.calls.append(call_ref)
+                # Ensure we walk children of calls in case of nested calls ( e.g., foo(bar()) )
+                for child in node.children:
+                    walk(child)
+
+            else:
+                # Keep traversing down the tree
+                for child in node.children:
+                    walk(child)
+
+        # 4. Start the traversal
+        for child in tree.root_node.children:
+            walk(child)
+
+        return list(units.values())

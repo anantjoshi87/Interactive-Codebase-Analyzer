@@ -3,12 +3,12 @@ from pathlib import Path
 import traceback
 from typing import Optional
 
-from .ast_parser import TreeSitterParser
-from .fallback_chunker import FallbackChunker
-from .language_registry import LanguageRegistry
-from .config_parser import ConfigParser
-from .document_parser import DocumentParser
-from .constants import (
+from app.services.ingestion.parser.ast_parser import TreeSitterParser
+from app.services.ingestion.parser.fallback_chunker import FallbackChunker
+from app.services.ingestion.specs.language_registry import LanguageRegistry
+from app.services.ingestion.parser.config_parser import ConfigParser
+from app.services.ingestion.parser.document_parser import DocumentParser
+from app.services.ingestion.specs.constants import (
     DEFAULT_IGNORED_DIRS,
     DEFAULT_IGNORED_EXTS,
 )
@@ -35,22 +35,31 @@ class RepoParser:
 
     def parse_repository(self, repo_path: str) -> list[BaseUnit]:
 
+        # 1. Convert the repo_path to an absolute path immediately
+        abs_repo_path = Path(repo_path).resolve()
+
         extracted_units = []
 
-        for root, _, files in os.walk(repo_path):
+        # 2. Walk the absolute path
+        for root, _, files in os.walk(abs_repo_path):
 
             if any(ignored in root for ignored in self.ignored_dirs):
                 continue
 
             for file in files:
 
+                # file_path is now an absolute path (e.g., /Users/name/repo/service.py)
                 file_path = Path(root) / file
                 extension = file_path.suffix.lower()
 
                 if extension in self.ignored_extensions:
                     continue
 
-                relative_path = str(file_path.relative_to(repo_path))
+                # You can still compute the relative path if you need it for clean IDs
+                relative_path = str(file_path.relative_to(abs_repo_path))
+
+                # If you want to use the absolute path in your parsers, cast it to string:
+                abs_file_path_str = str(file_path)
 
                 try:
                     with open(file_path, "rb") as f:
@@ -61,17 +70,17 @@ class RepoParser:
                     if config:
                         extracted_units.extend(
                             self.ast_parser.parse(
-                                relative_path,
+                                # Pass abs_file_path_str here if you want absolute paths in parent_symbol_id
+                                abs_file_path_str,
                                 code,
                                 config,
                             )
                         )
 
                     elif self.config_parser.supports(file_path):
-
                         extracted_units.extend(
                             self.config_parser.parse(
-                                file_path,
+                                abs_file_path_str,
                                 code,
                             )
                         )
@@ -79,7 +88,7 @@ class RepoParser:
                     elif self.document_parser.supports(file_path):
                         extracted_units.extend(
                             self.document_parser.parse(
-                                file_path,
+                                abs_file_path_str,
                                 code,
                             )
                         )
@@ -93,7 +102,7 @@ class RepoParser:
                     #     )
 
                 except Exception:
-                    print(f"\nError parsing {relative_path}")
+                    print(f"\nError parsing {abs_file_path_str}")
                     traceback.print_exc()
 
         return extracted_units

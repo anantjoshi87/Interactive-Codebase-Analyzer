@@ -1,6 +1,6 @@
 import tomllib
 
-from ..models import ConfigUnit, UnitType
+from app.services.ingestion.models import ConfigUnit, UnitType
 from .utils import decode_bytes
 
 def parse_pyproject(file_path, content):

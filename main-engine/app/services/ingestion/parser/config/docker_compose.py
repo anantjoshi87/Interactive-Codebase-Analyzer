@@ -1,4 +1,4 @@
-from ..models import ConfigUnit, UnitType
+from app.services.ingestion.models import ConfigUnit, UnitType
 import yaml
 from .utils import decode_bytes
 

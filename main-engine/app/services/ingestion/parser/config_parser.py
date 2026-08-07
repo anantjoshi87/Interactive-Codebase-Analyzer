@@ -29,9 +29,12 @@ class ConfigParser:
         return file_path.name in cls.PARSERS
 
     @classmethod
-    def parse(cls, file_path: Path, content: bytes):
-        parser = cls.PARSERS.get(file_path.name)
+    def parse(cls, file_path: Path, code_bytes: bytes):
+        # Convert string to Path object to access .name safely
+        path_obj = Path(file_path)
+
+        parser = cls.PARSERS.get(path_obj.name)
         if parser is None:
             return []
 
-        return parser(file_path, content)
+        return parser(file_path, code_bytes)

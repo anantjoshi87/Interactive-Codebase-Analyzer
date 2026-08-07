@@ -57,6 +57,8 @@ class CallReference(BaseModel):
     method: str
     callee: str
     target_unit_id: str | None = None
+    confidence: str = "LOW"
+    call_type: str = "FUNCTION_CALL"
     line: int | None = None
     column: int | None = None
 
@@ -66,11 +68,11 @@ class CodeMetadata(BaseModel):
     globals: list[GlobalVariable] = []
 
     parent_class: str | None = None
-    docstring: str | None = None
+    # docstring: str | None = None
     calls: list[CallReference] = []
-    references: list[Reference] = []
+    # references: list[Reference] = []
     overrides: list[str] = []
-    annotations: list[str] = []
+    # annotations: list[str] = []
 
     # Function / Method
     decorators: list[str] = []

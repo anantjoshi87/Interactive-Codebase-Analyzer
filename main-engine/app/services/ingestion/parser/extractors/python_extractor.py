@@ -14,49 +14,50 @@ class PythonExtractor(BaseExtractor):
         return None
 
     def parse_import_node(self, node: Node) -> list[ImportReference]:
-        """Parses a single import_statement or import_from_statement node."""
         imports = []
 
         if node.type == "import_statement":
             # Handles: import os, sys
             for child in node.children:
                 if child.type == "dotted_name":
-                    imports.append(ImportReference(module=self.node_text(child)))
+                    name = child.text.decode("utf-8")
+                    imports.append(
+                        ImportReference(module=name, imported_name=name, alias=None)
+                    )
                 elif child.type == "aliased_import":
                     # Handles: import numpy as np
-                    orig = child.child_by_field_name("name")
-                    alias = child.child_by_field_name("alias")
-                    if orig and alias:
-                        imports.append(
-                            ImportReference(
-                                module=self.node_text(orig), alias=self.node_text(alias)
-                            )
-                        )
+                    name = child.child_by_field_name("name").text.decode("utf-8")
+                    alias = child.child_by_field_name("alias").text.decode("utf-8")
+                    imports.append(
+                        ImportReference(module=name, imported_name=name, alias=alias)
+                    )
 
         elif node.type == "import_from_statement":
-            # Handles: from typing import List, Dict
+            # Handles: from app.models import CodeUnit
             module_node = node.child_by_field_name("module_name")
-            module_name = self.node_text(module_node) if module_node else ""
+            module_name = module_node.text.decode("utf-8") if module_node else ""
 
             for child in node.children:
+                # --- THE FIX: Skip the module_node so it isn't treated as an imported symbol ---
+                if module_node and child.id == module_node.id:
+                    continue
+                # -------------------------------------------------------------------------------
+
                 if child.type == "dotted_name":
+                    name = child.text.decode("utf-8")
                     imports.append(
                         ImportReference(
-                            module=module_name, imported_name=self.node_text(child)
+                            module=module_name, imported_name=name, alias=None
                         )
                     )
                 elif child.type == "aliased_import":
-                    # Handles: from bs4 import BeautifulSoup as bs
-                    orig = child.child_by_field_name("name")
-                    alias = child.child_by_field_name("alias")
-                    if orig and alias:
-                        imports.append(
-                            ImportReference(
-                                module=module_name,
-                                imported_name=self.node_text(orig),
-                                alias=self.node_text(alias),
-                            )
+                    name = child.child_by_field_name("name").text.decode("utf-8")
+                    alias = child.child_by_field_name("alias").text.decode("utf-8")
+                    imports.append(
+                        ImportReference(
+                            module=module_name, imported_name=name, alias=alias
                         )
+                    )
 
         return imports
 

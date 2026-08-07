@@ -56,6 +56,7 @@ class LanguageRegistry:
             import_query=PY_IMPORT_QUERY,
             global_query=PY_GLOBAL_QUERY,
             extractor=PythonExtractor,
+            
         )
 
         # ---------------- JavaScript / TypeScript ---------------- #

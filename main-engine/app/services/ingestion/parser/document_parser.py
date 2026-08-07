@@ -65,7 +65,7 @@ class DocumentParser:
     @staticmethod
     def _document_type(file_path: Path) -> str:
 
-        name = file_path.name.lower()
+        name = Path(file_path).name.lower()
 
         if name.startswith("readme"):
             return "readme"

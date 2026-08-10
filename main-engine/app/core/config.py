@@ -8,10 +8,15 @@ class Settings:
     """
     Application configuration loaded from .env
     """
+    
+    # Neo4j
+    NEO4J_URI: str = os.getenv("NEO4J_URI", "")
+    NEO4J_USERNAME: str = os.getenv("NEO4J_USERNAME", "")
+    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
 
     # AI APIs
     MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-    MISTRAL_LLM_MODEL = os.getenv("LLM_MODEL", "mistral-large-latest")
+    MISTRAL_LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
     MISTRAL_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mistral-embed")
 
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")

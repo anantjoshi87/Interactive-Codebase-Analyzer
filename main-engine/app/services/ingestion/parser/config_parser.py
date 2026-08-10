@@ -20,7 +20,7 @@ class ConfigParser:
         "Dockerfile": parse_dockerfile,
         "docker-compose.yml": parse_docker_compose,
         "docker-compose.yaml": parse_docker_compose,
-        ".env": parse_env,
+        # ".env": parse_env,
         ".env.example": parse_env,
     }
 

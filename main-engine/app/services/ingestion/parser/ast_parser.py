@@ -179,18 +179,18 @@ class TreeSitterParser:
 
             # --- B. Scoped Metadata Nodes (Imports, Globals, Calls) ---
             elif node.type in ("import_statement", "import_from_statement"):
-                imports = extractor.parse_import_node(node)
+                imports = extractor.extract_imports(node)
                 current_unit.metadata.imports.extend(imports)
 
             elif node.type == "assignment":
                 if len(scope_stack) == 1:
-                    global_vars = extractor.parse_assignment_node(node)
+                    global_vars = extractor.extract_globals(node)
                     current_unit.metadata.globals.extend(global_vars)
                 for child in node.children:
                     walk(child)
 
             elif node.type == "call":
-                call_ref = extractor.parse_call_node(node)
+                call_ref = extractor.extract_calls(node)
                 if call_ref:
                     current_unit.metadata.calls.append(call_ref)
                 for child in node.children:

@@ -1,9 +1,10 @@
 from pathlib import Path
 from .base_resolver import BaseResolver
-
-from app.services.ingestion.models import (
-    CodeUnit,
-)
+import os
+import re
+from pathlib import Path
+from .base_resolver import BaseResolver
+from app.services.ingestion.models import CodeUnit
 
 from ...specs.constants import BUILTIN_FUNCTIONS
 
@@ -114,46 +115,86 @@ class PythonResolver(BaseResolver):
         self,
         current_file: Path,
         module: str,
+        repo_root: Path | None = None,  # Optional repo_root parameter
     ) -> Path | None:
 
         level = 0
+        clean_module = module
 
-        while module.startswith("."):
+        while clean_module.startswith("."):
             level += 1
-            module = module[1:]
+            clean_module = clean_module[1:]
 
-        package_dir = current_file.parent
+        # -------------------------------------------------------------
+        # 1. Relative Import Handling (e.g. from .base import X)
+        # -------------------------------------------------------------
+        if level > 0:
+            package_dir = current_file.parent
+            for _ in range(level - 1):
+                package_dir = package_dir.parent
 
-        for _ in range(level - 1):
-            package_dir = package_dir.parent
+            if clean_module:
+                relative = Path(*clean_module.split("."))
+                file_candidate = package_dir / f"{relative}.py"
+                if file_candidate.exists():
+                    return file_candidate.resolve()
 
-        if module:
-            relative = Path(*module.split("."))
+                init_candidate = package_dir / relative / "__init__.py"
+                if init_candidate.exists():
+                    return init_candidate.resolve()
+            else:
+                init_candidate = package_dir / "__init__.py"
+                if init_candidate.exists():
+                    return init_candidate.resolve()
 
-            file_candidate = package_dir / f"{relative}.py"
+            return None
 
+        # -------------------------------------------------------------
+        # 2. Absolute Import Handling (e.g. from app.config import Settings)
+        # -------------------------------------------------------------
+        relative = Path(*clean_module.split("."))
+
+        # Search location candidates: current directory AND parent roots
+        search_dirs = []
+
+        # Add current package directory first
+        search_dirs.append(current_file.parent)
+
+        # Walk up parent directories to find repository root containing 'app/'
+        curr = current_file.parent
+        while curr != curr.parent:
+            search_dirs.append(curr)
+            curr = curr.parent
+
+        for base_dir in search_dirs:
+            # Check direct module file: e.g. GraphRAG / app / config.py
+            file_candidate = base_dir / f"{relative}.py"
             if file_candidate.exists():
                 return file_candidate.resolve()
 
-            init_candidate = package_dir / relative / "__init__.py"
-
-            if init_candidate.exists():
-                return init_candidate.resolve()
-
-        else:
-            init_candidate = package_dir / "__init__.py"
-
+            # Check package init: e.g. GraphRAG / app / config / __init__.py
+            init_candidate = base_dir / relative / "__init__.py"
             if init_candidate.exists():
                 return init_candidate.resolve()
 
         return None
 
+    @staticmethod
+    def _normalize_id(symbol_id: str | None) -> str | None:
+        """Ensures consistent path formatting across OS platforms."""
+        if not symbol_id:
+            return None
+        if "::<module>" in symbol_id:
+            file_part, symbol_part = symbol_id.split("::<module>", 1)
+            return f"{os.path.normpath(file_part)}::<module>{symbol_part}"
+        return os.path.normpath(symbol_id)
+
     def resolve_calls(self, units: list[CodeUnit]) -> None:
-        import re  # Ensure re is imported for type hint extraction
+        unit_by_id = {self._normalize_id(u.id): u for u in units}
 
-        unit_by_id = {u.id: u for u in units}
-
-        # Pre-build a map of Class Units -> Class Field Types (self.attr = Class())
+        # ------------------------------------------------------------------
+        # 1. Pre-build Map of Class Units -> Class Field Types
+        # ------------------------------------------------------------------
         class_attribute_types: dict[str, dict[str, str]] = {}
         for unit in units:
             if unit.symbol_kind == "class":
@@ -161,81 +202,97 @@ class PythonResolver(BaseResolver):
                 for method in units:
                     if method.parent_symbol_id == unit.id:
                         for glob in method.metadata.globals:
-                            if (
-                                glob.name
-                                and glob.name.startswith("self.")
-                                and glob.value
-                                and "(" in glob.value
-                            ):
-                                attr_name = glob.name.replace("self.", "").strip()
-                                inferred_class = (
-                                    glob.value.split("(")[0].strip().split(".")[-1]
-                                )
-                                attrs[attr_name] = inferred_class
-                class_attribute_types[unit.id] = attrs
+                            if glob.name and glob.value:
+                                # Clean 'self.' or 'cls.' prefixes safely
+                                clean_name = glob.name
+                                if clean_name.startswith(("self.", "cls.")):
+                                    clean_name = clean_name.split(".", 1)[1]
+
+                                val = glob.value.strip()
+
+                                # Handle pipe chain assignments: self.chain = prompt | llm | parser
+                                if "|" in val:
+                                    last_expr = val.split("|")[-1].strip()
+                                    inferred_class = (
+                                        last_expr.split("(")[0].strip().split(".")[-1]
+                                    )
+                                    if inferred_class:
+                                        attrs[clean_name] = inferred_class
+
+                                # Handle standard constructor instantiations: self.vector = VectorRetriever()
+                                elif "(" in val:
+                                    inferred_class = (
+                                        val.split("(")[0].strip().split(".")[-1]
+                                    )
+                                    if inferred_class:
+                                        attrs[clean_name] = inferred_class
+
+                class_attribute_types[self._normalize_id(unit.id)] = attrs
 
         for unit in units:
-            # 1. Build Local Scope (symbols in same file)
+            # 1. Local scope (symbols in same file)
             local_scope = {
-                u.symbol_name: u.id
+                u.symbol_name: self._normalize_id(u.id)
                 for u in units
                 if u.file_path == unit.file_path and u.id != unit.id
             }
 
-            # 2. Build Import Scope
-            # Check module unit for file or current file's parent module
+            # 2. Import scope
             import_scope = {}
-            module_id = f"{unit.file_path}::<module>"
+            module_id = self._normalize_id(f"{unit.file_path}::<module>")
             module_unit = unit_by_id.get(module_id)
             if module_unit:
                 for imp in module_unit.metadata.imports:
                     name = imp.alias if imp.alias else imp.imported_name
                     if name and imp.target_unit_id:
-                        import_scope[name] = imp.target_unit_id
+                        import_scope[name] = self._normalize_id(imp.target_unit_id)
 
-            # 3. Variable Scope Tracker (Globals + Method-Local Instantiations + Type Hints)
+            # 3. Variable Scope Tracker
             variable_types = {}
 
-            # A) Module-level globals (e.g. unit = CodeUnit())
+            # Inherit module-level script globals
+            if module_unit and module_unit.metadata.globals:
+                for glob in module_unit.metadata.globals:
+                    if glob.name and glob.value and "(" in glob.value:
+                        inferred = glob.value.split("(")[0].strip().split(".")[-1]
+                        variable_types[glob.name] = inferred
+
             for glob in unit.metadata.globals:
                 if glob.name and glob.value and "(" in glob.value:
                     inferred = glob.value.split("(")[0].strip().split(".")[-1]
                     variable_types[glob.name] = inferred
 
-            # B) Method-level local variables (e.g. unit = CodeUnit("test_unit"))
-            # Scan calls inside this unit to catch local assignments
+            # Method-level local assignments
             for c in unit.metadata.calls:
-                # If a call looks like a constructor call, map any variable used before '.' on subsequent calls
                 if c.method in import_scope or c.method in local_scope:
-                    # Check if target is a class
                     target_symbol_id = import_scope.get(c.method) or local_scope.get(
                         c.method
                     )
                     target_u = (
-                        unit_by_id.get(target_symbol_id) if target_symbol_id else None
+                        unit_by_id.get(self._normalize_id(target_symbol_id))
+                        if target_symbol_id
+                        else None
                     )
-                    if (target_u and target_u.symbol_kind == "class") or c.method[
-                        0
-                    ].isupper():
-                        # Extract left-hand side variable name if present in code content line
+
+                    if (target_u and target_u.symbol_kind == "class") or (
+                        c.method and c.method[0].isupper()
+                    ):
                         for line_str in unit.code_content.splitlines():
                             if f"{c.method}(" in line_str and "=" in line_str:
                                 var_name = line_str.split("=")[0].strip()
                                 variable_types[var_name] = c.method
 
-            # C) Function Parameter Type Hints (e.g. unit: CodeUnit)
+            # Function Parameter Type Hints
             if unit.symbol_kind in ("function", "method") and unit.code_content:
                 sig_match = re.search(
                     r"def\s+\w+\s*\((.*?)\)", unit.code_content, re.DOTALL
                 )
                 if sig_match:
                     params_str = sig_match.group(1)
-                    # Find patterns like "var_name: TypeName"
                     for match in re.finditer(r"(\w+)\s*:\s*([^,=\)]+)", params_str):
                         var_name = match.group(1).strip()
                         type_str = match.group(2).strip()
 
-                        # Extract core class names (ignores wrappers like Optional, list)
                         type_words = re.findall(r"[a-zA-Z_]\w*", type_str)
                         ignored_typing = {
                             "Optional",
@@ -253,28 +310,29 @@ class PythonResolver(BaseResolver):
                             "Sequence",
                             "Mapping",
                         }
-
                         valid_types = [w for w in type_words if w not in ignored_typing]
                         if valid_types:
                             variable_types[var_name] = valid_types[-1]
 
-            parent_class_id = unit.parent_symbol_id
+            parent_class_id = self._normalize_id(unit.parent_symbol_id)
 
+            # ------------------------------------------------------------------
             # 4. Resolve Calls
+            # ------------------------------------------------------------------
             valid_calls = []
             for call in unit.metadata.calls:
-                # EARLY FILTER: Drop un-shadowed language built-ins (print, len, range, str, int, etc.)
+                # Early Filter for Language Built-ins
                 if not call.receiver and call.method in self.BUILTIN_FUNCTIONS:
                     if (
                         call.callee not in local_scope
                         and call.callee not in import_scope
                     ):
-                        continue  # Completely skip built-ins—do NOT append to valid_calls
+                        continue
 
                 target_id = None
                 call_type = "FUNCTION_CALL"
 
-                # Case A: Direct Function / Constructor Call (No receiver)
+                # Case A: Direct Function / Constructor Call
                 if not call.receiver:
                     if call.callee in local_scope:
                         target_id = local_scope[call.callee]
@@ -282,7 +340,7 @@ class PythonResolver(BaseResolver):
                         target_id = import_scope[call.callee]
 
                     if target_id:
-                        target_u = unit_by_id.get(target_id)
+                        target_u = unit_by_id.get(self._normalize_id(target_id))
                         if target_u and target_u.symbol_kind == "class":
                             call_type = "INSTANTIATION"
 
@@ -294,16 +352,26 @@ class PythonResolver(BaseResolver):
                     if call.receiver in ("self", "cls") and parent_class_id:
                         target_id = f"{parent_class_id}::{call.method}"
 
-                    # 2. Receiver is a class field (self.ast_parser.parse())
-                    elif call.receiver.startswith("self.") and parent_class_id:
-                        attr_name = call.receiver.replace("self.", "").strip()
-                        parent_attrs = class_attribute_types.get(parent_class_id, {})
-                        if attr_name in parent_attrs:
-                            var_class = parent_attrs[attr_name]
-                            if var_class in import_scope:
-                                target_id = f"{import_scope[var_class]}::{call.method}"
-                            elif var_class in local_scope:
-                                target_id = f"{local_scope[var_class]}::{call.method}"
+                    # 2. Receiver is an Instance Attribute (e.g. self.vector.retrieve)
+                    elif (
+                        call.receiver.startswith(("self.", "cls.")) and parent_class_id
+                    ):
+                        attr_parts = call.receiver.split(".")
+                        if len(attr_parts) >= 2:
+                            attr_name = attr_parts[1].strip()
+                            parent_attrs = class_attribute_types.get(
+                                parent_class_id, {}
+                            )
+                            if attr_name in parent_attrs:
+                                var_class = parent_attrs[attr_name]
+                                if var_class in import_scope:
+                                    target_id = (
+                                        f"{import_scope[var_class]}::{call.method}"
+                                    )
+                                elif var_class in local_scope:
+                                    target_id = (
+                                        f"{local_scope[var_class]}::{call.method}"
+                                    )
 
                     # 3. Receiver is an imported module/class
                     elif call.receiver in import_scope:
@@ -313,7 +381,7 @@ class PythonResolver(BaseResolver):
                     elif call.receiver in local_scope:
                         target_id = f"{local_scope[call.receiver]}::{call.method}"
 
-                    # 5. Receiver is a tracked local or global variable (includes type hints)
+                    # 5. Receiver is a tracked local or global variable
                     elif call.receiver in variable_types:
                         var_class = variable_types[call.receiver]
                         if var_class in import_scope:
@@ -321,15 +389,11 @@ class PythonResolver(BaseResolver):
                         elif var_class in local_scope:
                             target_id = f"{local_scope[var_class]}::{call.method}"
 
-                # VALIDATION CHECK: Method must exist in target class!
-                if target_id and call_type == "METHOD_CALL":
-                    if target_id not in unit_by_id:
-                        # Method does not exist (e.g. unit.temp())
-                        target_id = None
+                # Normalize and validate constructed target_ids
+                normalized_target = self._normalize_id(target_id)
 
-                # Assign Metadata
-                if target_id:
-                    call.target_unit_id = target_id
+                if normalized_target and normalized_target in unit_by_id:
+                    call.target_unit_id = normalized_target
                     call.confidence = "HIGH"
                 else:
                     call.target_unit_id = None

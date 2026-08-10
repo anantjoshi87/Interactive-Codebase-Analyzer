@@ -1,5 +1,3 @@
-# app/services/ingestion/parsers/extractors/base_extractor.py
-
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from tree_sitter import Node
@@ -8,7 +6,6 @@ from app.services.ingestion.models import (
     ImportReference,
     GlobalVariable,
     CallReference,
-    Reference,
     LanguageConfig,
 )
 
@@ -16,6 +13,7 @@ from app.services.ingestion.models import (
 class BaseExtractor(ABC):
     """
     Base class for all language extractors.
+    Defines the mandatory interface for metadata extraction matching CodeMetadata.
     """
 
     def __init__(
@@ -31,7 +29,7 @@ class BaseExtractor(ABC):
     # Helpers
     # -------------------------------------------------
 
-    def node_text(self, node: Node) -> str:
+    def node_text(self, node: Node | None) -> str:
         if not node:
             return ""
         return self.code[node.start_byte : node.end_byte].decode(
@@ -40,23 +38,27 @@ class BaseExtractor(ABC):
         )
 
     # -------------------------------------------------
-    # Metadata Extraction Defaults
+    # Mandatory Abstract Extraction Interface
     # -------------------------------------------------
 
+    @abstractmethod
     def extract_imports(self, root: Node) -> list[ImportReference]:
-        return []
+        """Extract all import statements from the AST root."""
+        pass
 
+    @abstractmethod
     def extract_globals(self, root: Node) -> list[GlobalVariable]:
-        return []
+        """Extract global/top-level variable assignments from the AST root."""
+        pass
 
+    @abstractmethod
     def extract_calls(self, node: Node) -> list[CallReference]:
-        return []
+        """Extract function/method call expressions within a code node."""
+        pass
 
-    def extract_references(self, node: Node) -> list[Reference]:
-        return []
-
-    def extract_docstring(self, node: Node) -> str | None:
-        return None
+    # -------------------------------------------------
+    # Optional / Contextual Extraction Defaults
+    # -------------------------------------------------
 
     def extract_parent_class(self, node: Node) -> str | None:
         return None
@@ -69,12 +71,3 @@ class BaseExtractor(ABC):
 
     def extract_overrides(self, node: Node) -> list[str]:
         return []
-
-    def extract_annotations(self, node: Node) -> list[str]:
-        return []
-
-    def extract_exceptions(self, node: Node) -> list[str]:
-        return []
-
-    def extract_returns(self, node: Node) -> str | None:
-        return None

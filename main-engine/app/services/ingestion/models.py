@@ -76,8 +76,8 @@ class CodeMetadata(BaseModel):
 
     # Function / Method
     decorators: list[str] = []
-    returns: str | None = None
-    exceptions: list[str] = []
+    # returns: str | None = None
+    # exceptions: list[str] = []
 
     # Class
     inheritance: list[str] = []

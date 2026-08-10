@@ -13,7 +13,7 @@ class PythonExtractor(BaseExtractor):
             return self.node_text(name_node)
         return None
 
-    def parse_import_node(self, node: Node) -> list[ImportReference]:
+    def extract_imports(self, node: Node) -> list[ImportReference]:
         imports = []
 
         if node.type == "import_statement":
@@ -61,7 +61,7 @@ class PythonExtractor(BaseExtractor):
 
         return imports
 
-    def parse_assignment_node(self, node: Node) -> list[GlobalVariable]:
+    def extract_globals(self, node: Node) -> list[GlobalVariable]:
         """Parses an assignment to extract global variables."""
         globals_ = []
         # The left side of an assignment can be multiple targets (e.g., a, b = 1, 2)
@@ -78,7 +78,7 @@ class PythonExtractor(BaseExtractor):
             )
         return globals_
 
-    def parse_call_node(self, node: Node) -> CallReference | None:
+    def extract_calls(self, node: Node) -> CallReference | None:
         """Extracts function/method calls."""
         func_node = node.child_by_field_name("function")
         if not func_node:

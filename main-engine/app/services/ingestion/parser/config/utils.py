@@ -1,4 +1,4 @@
-def decode_bytes(content: bytes) -> str:
+def decode_bytes(code_bytes: bytes) -> str:
     for encoding in (
         "utf-8",
         "utf-16",
@@ -7,8 +7,8 @@ def decode_bytes(content: bytes) -> str:
         "latin-1",
     ):
         try:
-            return content.decode(encoding)
+            return code_bytes.decode(encoding, errors="ignore")
         except UnicodeDecodeError:
             pass
 
-    return content.decode("utf-8", errors="ignore")
+    return code_bytes.decode("utf-8", errors="ignore")

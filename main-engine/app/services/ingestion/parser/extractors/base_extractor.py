@@ -1,7 +1,6 @@
-from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import List, Optional
 from tree_sitter import Node
-
 from app.services.ingestion.models import (
     ImportReference,
     GlobalVariable,
@@ -11,63 +10,30 @@ from app.services.ingestion.models import (
 
 
 class BaseExtractor(ABC):
-    """
-    Base class for all language extractors.
-    Defines the mandatory interface for metadata extraction matching CodeMetadata.
-    """
+    def __init__(self, code_bytes: bytes, lang_config: LanguageConfig):
+        self.code_bytes = code_bytes
+        self.lang_config = lang_config
 
-    def __init__(
-        self,
-        code_bytes: bytes,
-        lang_config: LanguageConfig,
-    ):
-        self.code = code_bytes
-        self.config = lang_config
-        self.language = lang_config.language
-
-    # -------------------------------------------------
-    # Helpers
-    # -------------------------------------------------
-
-    def node_text(self, node: Node | None) -> str:
-        if not node:
-            return ""
-        return self.code[node.start_byte : node.end_byte].decode(
-            "utf-8",
-            errors="ignore",
+    def _node_text(self, node: Node) -> str:
+        """Helper to safely decode byte ranges of an AST node."""
+        return (
+            self.code_bytes[node.start_byte : node.end_byte]
+            .decode("utf-8", errors="ignore")
+            .strip()
         )
 
-    # -------------------------------------------------
-    # Mandatory Abstract Extraction Interface
-    # -------------------------------------------------
-
     @abstractmethod
-    def extract_imports(self, root: Node) -> list[ImportReference]:
-        """Extract all import statements from the AST root."""
+    def get_node_name(self, node: Node) -> Optional[str]:
         pass
 
     @abstractmethod
-    def extract_globals(self, root: Node) -> list[GlobalVariable]:
-        """Extract global/top-level variable assignments from the AST root."""
+    def extract_imports(self, node: Node) -> List[ImportReference]:
         pass
 
     @abstractmethod
-    def extract_calls(self, node: Node) -> list[CallReference]:
-        """Extract function/method call expressions within a code node."""
+    def extract_globals(self, node: Node) -> List[GlobalVariable]:
         pass
 
-    # -------------------------------------------------
-    # Optional / Contextual Extraction Defaults
-    # -------------------------------------------------
-
-    def extract_parent_class(self, node: Node) -> str | None:
-        return None
-
-    def extract_decorators(self, node: Node) -> list[str]:
-        return []
-
-    def extract_inheritance(self, node: Node) -> list[str]:
-        return []
-
-    def extract_overrides(self, node: Node) -> list[str]:
-        return []
+    @abstractmethod
+    def extract_calls(self, node: Node) -> Optional[CallReference]:
+        pass

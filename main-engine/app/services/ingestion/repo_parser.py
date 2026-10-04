@@ -59,7 +59,7 @@ class RepoParser:
                 relative_path = str(file_path.relative_to(abs_repo_path))
 
                 # If you want to use the absolute path in your parsers, cast it to string:
-                abs_file_path_str = str(file_path)
+                # abs_file_path_str = str(file_path)
 
                 try:
                     with open(file_path, "rb") as f:
@@ -70,26 +70,23 @@ class RepoParser:
                     if config:
                         extracted_units.extend(
                             self.ast_parser.parse(
-                                # Pass abs_file_path_str here if you want absolute paths in parent_symbol_id
-                                abs_file_path_str,
-                                code,
-                                config,
+                                relative_path=relative_path,
+                                code_bytes=code,
+                                lang_config=config,
                             )
                         )
-
                     elif self.config_parser.supports(file_path):
                         extracted_units.extend(
                             self.config_parser.parse(
-                                abs_file_path_str,
-                                code,
+                                file_path=relative_path,
+                                code_bytes=code,
                             )
                         )
-
                     elif self.document_parser.supports(file_path):
                         extracted_units.extend(
                             self.document_parser.parse(
-                                abs_file_path_str,
-                                code,
+                                file_path=relative_path,
+                                content=code,
                             )
                         )
 
@@ -102,7 +99,7 @@ class RepoParser:
                     #     )
 
                 except Exception:
-                    print(f"\nError parsing {abs_file_path_str}")
+                    print(f"\nError parsing {relative_path}")
                     traceback.print_exc()
 
         return extracted_units

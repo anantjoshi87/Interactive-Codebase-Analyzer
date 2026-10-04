@@ -1,33 +1,49 @@
-import os
-from dotenv import load_dotenv
+from functools import lru_cache
 
-load_dotenv()
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings:
-    """
-    Application configuration loaded from .env
-    """
-    
-    # Neo4j
-    NEO4J_URI: str = os.getenv("NEO4J_URI", "")
-    NEO4J_USERNAME: str = os.getenv("NEO4J_USERNAME", "")
-    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
-
-    # AI APIs
-    MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-    MISTRAL_LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
-    MISTRAL_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mistral-embed")
-
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-    # Web Search
-    TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+class Settings(BaseSettings):
+    """Application configuration loaded from .env"""
 
     # Database
-    REDIS_URL = os.getenv("REDIS_URL")
-    PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-    NEON_URL = os.getenv("NEON_URL")
+    DATABASE_URL: str | None = None
+
+    # Neo4j
+    NEO4J_URI: str | None = None
+    NEO4J_USERNAME: str | None = None
+    NEO4J_PASSWORD: str | None = None
+
+    # AI APIs
+    MISTRAL_API_KEY: str | None = None
+    MISTRAL_LLM_MODEL: str = "mistral-small-latest"
+    MISTRAL_EMBEDDING_MODEL: str = "mistral-embed"
+
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+
+    # Web Search
+    TAVILY_API_KEY: str | None = None
+
+    # Embeddings / Reranking
+    JINA_API_KEY: str | None = None
+
+    # Other Services
+    REDIS_URL: str | None = None
+    PINECONE_API_KEY: str | None = None
+    NEON_URL: str | None = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

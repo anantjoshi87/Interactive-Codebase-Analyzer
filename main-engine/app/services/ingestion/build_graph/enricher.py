@@ -11,7 +11,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from app.core.config import Settings
+from app.core.config import settings
 from app.services.ingestion.models import CodeUnit, ConfigUnit, DocumentUnit, UnitType
 
 AnyUnit = Union[CodeUnit, ConfigUnit, DocumentUnit]
@@ -28,17 +28,17 @@ class CodeEnricher:
         # 1. Concurrency control semaphore
         self.semaphore = asyncio.Semaphore(max_concurrency)
 
-        # Primary LLM (Mistral)
-        primary_llm = ChatMistralAI(
-            model=Settings.MISTRAL_LLM_MODEL,
-            api_key=Settings.MISTRAL_API_KEY,
+        # Primary LLM (Groq)
+        primary_llm = ChatGroq(
+            model=settings.GROQ_MODEL,
+            api_key=settings.GROQ_API_KEY,
             temperature=0,
         )
 
-        # Secondary Backup LLM (Groq)
-        fallback_llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
-            api_key=Settings.GROQ_API_KEY,
+        # Secondary Backup LLM
+        fallback_llm = ChatMistralAI(
+            model=settings.MISTRAL_LLM_MODEL,
+            api_key=settings.MISTRAL_API_KEY,
             temperature=0,
         )
 
@@ -47,22 +47,27 @@ class CodeEnricher:
 
         # Embedding model
         self.embeddings = MistralAIEmbeddings(
-            model=Settings.MISTRAL_EMBEDDING_MODEL,
-            api_key=Settings.MISTRAL_API_KEY,
+            model=settings.MISTRAL_EMBEDDING_MODEL,
+            api_key=settings.MISTRAL_API_KEY,
         )
 
         self.summary_prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are an expert static analysis engine generating dense summaries for indexing.\n\n"
-                    "Generate a technical summary optimized for semantic vector retrieval. "
-                    "Adhere strictly to these rules:\n"
-                    "1. Output exactly 2-3 dense sentences in plain text.\n"
-                    "2. State the core purpose, key configuration or logic, and operational effects.\n"
-                    "3. Mention explicit technical keywords.\n"
-                    "4. NEVER use fluff or intro phrases ('This function...', 'This module...').\n"
-                    "5. Do NOT use markdown headers, bullet points, or code blocks.",
+                    "You are a code intelligence indexing engine.\n\n"
+                    "Generate a dense technical summary of the provided code unit for semantic retrieval.\n\n"
+                    "Rules:\n"
+                    "1. Output exactly 2-4 dense sentences in plain text.\n"
+                    "2. Describe the unit's primary responsibility and important behavior.\n"
+                    "3. Mention important inputs, outputs, side effects, dependencies, and data flow when applicable.\n"
+                    "4. Preserve meaningful technical and domain-specific concepts that a developer might search for.\n"
+                    "5. Include explicit technology, class, function, API, database, protocol, or framework names when present.\n"
+                    "6. Prefer concrete terminology over generic descriptions.\n"
+                    "7. Do not invent behavior that is not present in the code.\n"
+                    "8. Do not use phrases such as 'This function', 'This class', or 'This module'.\n"
+                    "9. Do not use markdown, bullets, headers, or code blocks.\n"
+                    "10. Focus on information useful for answering questions about where and how functionality is implemented.",
                 ),
                 (
                     "user",
@@ -91,12 +96,54 @@ class CodeEnricher:
             {
                 "unit_type": unit_type,
                 "symbol_name": symbol_name,
-                "code_content": code_content[
-                    :4000
-                ],  # Truncate to prevent token overflow
+                "code_content": code_content,
             }
         )
         return response.content.strip()
+
+    def _build_semantic_text(self, unit: AnyUnit, summary: str) -> str:
+        if isinstance(unit, CodeUnit):
+            imports = [i.imported_name or i.module for i in unit.metadata.imports]
+
+            inheritance = [str(i) for i in unit.metadata.inheritance]
+
+            dependencies = [c.callee for c in unit.metadata.calls if c.callee]
+
+            return "\n".join(
+                [
+                    f"Symbol: {unit.symbol_name or '<module>'}",
+                    f"Qualified name: {unit.qualified_name}",
+                    f"Symbol kind: {unit.symbol_kind}",
+                    f"File: {unit.file_path}",
+                    f"Summary: {summary}",
+                    f"Imports: {', '.join(imports)}",
+                    f"Dependencies: {', '.join(dependencies)}",
+                    f"Inheritance: {', '.join(inheritance)}",
+                ]
+            )
+
+        elif isinstance(unit, ConfigUnit):
+            return "\n".join(
+                [
+                    f"Unit type: {unit.unit_type.value}",
+                    f"Config type: {unit.config_type}",
+                    f"File: {unit.file_path}",
+                    f"Summary: {summary}",
+                ]
+            )
+
+        elif isinstance(unit, DocumentUnit):
+            return "\n".join(
+                [
+                    f"Unit type: {unit.unit_type.value}",
+                    f"Title: {unit.title or ''}",
+                    f"Document type: {unit.document_type}",
+                    f"File: {unit.file_path}",
+                    f"Summary: {summary}",
+                ]
+            )
+
+        return summary
 
     async def _summarize_unit(self, unit: AnyUnit) -> str:
         unit_type = unit.unit_type.value
@@ -132,7 +179,12 @@ class CodeEnricher:
         summaries = await asyncio.gather(*summary_tasks)
 
         # 2. Batch embed summaries
-        embeddings_list = await self.embeddings.aembed_documents(list(summaries))
+        semantic_texts = [
+            self._build_semantic_text(unit, summary)
+            for unit, summary in zip(units, summaries)
+        ]
+
+        embeddings_list = await self.embeddings.aembed_documents(semantic_texts)
 
         # 3. Construct unit-specific payloads according to type
         enriched_payloads = []
@@ -140,32 +192,41 @@ class CodeEnricher:
 
             # --- CODE UNIT PAYLOAD ---
             if isinstance(unit, CodeUnit):
+                # FIX 1: Use target_symbol_id, not target_unit_id
                 calls = [
-                    {"target_id": c.target_unit_id, "method": c.method, "line": c.line}
+                    {
+                        "target_id": c.target_symbol_id,
+                        "method": c.method,
+                        "callee": c.callee,
+                        "line": c.line,
+                        "status": c.resolution_status,
+                    }
                     for c in unit.metadata.calls
-                    if c.target_unit_id
+                    if c.target_symbol_id and c.resolution_status == "RESOLVED"
                 ]
+
+                # External calls (e.g., standard library, third-party frameworks)
+                external_calls = [
+                    {
+                        "target_symbol": c.target_symbol_id,
+                        "method": c.method,
+                        "callee": c.callee,
+                        "line": c.line,
+                    }
+                    for c in unit.metadata.calls
+                    if c.target_symbol_id and c.resolution_status == "EXTERNAL"
+                ]
+
                 imports = [
-                    {"target_id": i.target_unit_id, "imported_name": i.imported_name}
+                    {
+                        "target_id": i.target_unit_id,
+                        "imported_name": i.imported_name,
+                        "module": i.module,
+                        "alias": i.alias,
+                    }
                     for i in unit.metadata.imports
                     if i.target_unit_id
                 ]
-
-                # --- NEW: Extract Inheritance and Overrides ---
-                # We use getattr() safely in case they are stored as strings
-                # instead of objects in your AST parser output.
-                inheritance = [
-                    getattr(i, "target_unit_id", i)
-                    for i in unit.metadata.inheritance
-                    if getattr(i, "target_unit_id", i)
-                ]
-
-                overrides = [
-                    getattr(o, "target_unit_id", o)
-                    for o in unit.metadata.overrides
-                    if getattr(o, "target_unit_id", o)
-                ]
-                # ----------------------------------------------
 
                 globals_data = [
                     {
@@ -185,6 +246,7 @@ class CodeEnricher:
                     "id": unit.id,
                     "file_path": unit.file_path,
                     "symbol_name": unit.symbol_name or "<module>",
+                    "qualified_name": unit.qualified_name,
                     "symbol_kind": unit.symbol_kind,
                     "ast_node_type": unit.ast_node_type,
                     "parent_symbol_id": unit.parent_symbol_id,
@@ -195,15 +257,17 @@ class CodeEnricher:
                     "imports": imports,
                     "globals": globals_data,
                     "calls": calls,
-                    "inheritance": inheritance,  # Added to payload
-                    "overrides": overrides,  # Added to payload
+                    "external_calls": external_calls,
+                    # Raw class base names extracted by Tree-sitter (e.g. ['User'])
+                    "raw_inheritance": [str(i) for i in unit.metadata.inheritance],
+                    "overrides": [str(o) for o in unit.metadata.overrides],
                 }
 
             # --- CONFIG UNIT PAYLOAD ---
             elif isinstance(unit, ConfigUnit):
                 payload = {
                     "unit_type": UnitType.CONFIG.value,
-                    "id": f"{unit.file_path}::<config>",
+                    "id": unit.id,  # FIX 2: Use unit's native id
                     "file_path": unit.file_path,
                     "config_type": unit.config_type,
                     "summary": summary,
@@ -215,7 +279,7 @@ class CodeEnricher:
             elif isinstance(unit, DocumentUnit):
                 payload = {
                     "unit_type": UnitType.DOCUMENT.value,
-                    "id": f"{unit.file_path}::<doc>",
+                    "id": unit.id,  # FIX 2: Use unit's native id
                     "file_path": unit.file_path,
                     "document_type": unit.document_type,
                     "title": unit.title or "",

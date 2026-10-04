@@ -1,3 +1,4 @@
+# Clones / fetches local or remote repository
 # Git cloning and temporary folder manager
 
 from contextlib import contextmanager

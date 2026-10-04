@@ -1,10 +1,13 @@
-from .repo_parser import RepoParser
-from .fetcher import RepoFetcher
-from .repo_resolver import RepoResolver
-
+from .pipeline import IngestionPipeline
+from .extraction.parsers import RepoParser
+from .resolution import RepoResolver
+from .graph import CodeEnricher, GraphSync
 
 __all__ = [
+    "IngestionPipeline",
     "RepoParser",
-    "RepoFetcher",
     "RepoResolver",
+    "CodeEnricher",
+    "GraphSync",
+    "IngestionPipeline",
 ]

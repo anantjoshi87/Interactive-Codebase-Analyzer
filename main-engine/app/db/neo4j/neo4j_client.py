@@ -45,6 +45,29 @@ class Neo4jClient:
             "CREATE INDEX codeunit_file_path IF NOT EXISTS FOR (c:CodeUnit) ON (c.file_path)",
             "CREATE INDEX codeunit_symbol_kind IF NOT EXISTS FOR (c:CodeUnit) ON (c.symbol_kind)",
             "CREATE INDEX code_unit_lookup IF NOT EXISTS FOR (c:CodeUnit) ON (c.file_path, c.symbol_name)",
+            # 3. Vector index
+            """
+            CREATE VECTOR INDEX codeunit_embedding IF NOT EXISTS
+            FOR (c:CodeUnit)
+            ON c.embedding
+            OPTIONS {
+                indexConfig: {
+                    `vector.dimensions`: 1024,
+                    `vector.similarity_function`: 'cosine'
+                }
+            }
+            """,
+            # 4. Fulltext index
+            """
+            CREATE FULLTEXT INDEX codeunit_fulltext IF NOT EXISTS
+            FOR (c:CodeUnit)
+            ON EACH [
+                c.symbol_name,
+                c.qualified_name,
+                c.file_path,
+                c.summary
+            ]
+            """,
         ]
 
         for query in schema_queries:

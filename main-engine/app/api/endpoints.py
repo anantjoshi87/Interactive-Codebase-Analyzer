@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import the two functions you just wrote
-from app.db.database import get_db
+from app.db.postgres_client import get_db
 from app.core.security import get_current_user
 
 router = APIRouter()

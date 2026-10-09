@@ -3,6 +3,7 @@ from pathlib import Path
 from app.schemas import AnyUnit
 from app.services.ingestion.extraction.parsers import RepoParser
 from app.services.ingestion.resolution import RepoResolver
+from app.services.ingestion.graph import CodeEnricher, GraphSync
 
 
 class IngestionPipeline:

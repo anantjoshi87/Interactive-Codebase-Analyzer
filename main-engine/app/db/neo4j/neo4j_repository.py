@@ -26,12 +26,13 @@ class CodebaseRepository:
     ) -> List[Dict[str, Any]]:
 
         query = """
-        CALL db.index.vector.queryNodes(
-            'codeunit_embedding',
-            $top_k,
-            $embedding
+        MATCH (node:CodeUnit)
+        SEARCH node IN (
+            VECTOR INDEX codeunit_embedding
+            FOR $embedding
+            LIMIT $top_k
         )
-        YIELD node, score
+        SCORE AS score
 
         RETURN
             node,

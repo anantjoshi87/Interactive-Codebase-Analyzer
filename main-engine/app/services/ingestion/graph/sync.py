@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import List, Dict, Any
-from app.db.neo4j_client import neo4j_client
+from app.db.neo4j.neo4j_client import neo4j_client
 
 logger = logging.getLogger(__name__)
 

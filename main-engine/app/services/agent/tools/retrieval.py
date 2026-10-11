@@ -103,6 +103,8 @@ class RetrievalTools:
             "end_line": node.get("end_line"),
         }
 
+    
+
 
 def build_retrieval_tools(
     repository: CodebaseRepository,
@@ -114,28 +116,25 @@ def build_retrieval_tools(
 
     return [
         tool(
-            service.search_codebase,
-            name="search_codebase",
+            "search_codebase",
             description=(
                 "Search the codebase using semantic and keyword retrieval. "
                 "Use this when the question describes behavior, functionality, "
                 "or concepts rather than an exact symbol or file."
             ),
-        ),
+        )(service.search_codebase),
         tool(
-            service.get_symbol,
-            name="get_symbol",
+            "get_symbol",
             description=(
                 "Find an exact code symbol by qualified name, symbol name, "
                 "or node id. Prefer this tool when the user explicitly mentions a known symbol."
             ),
-        ),
+        )(service.get_symbol),
         tool(
-            service.get_file,
-            name="get_file",
+            "get_file",
             description=(
                 "Find all code units contained in a repository file. "
                 "Use when the user mentions a specific file or module path."
             ),
-        ),
+        )(service.get_file),
     ]

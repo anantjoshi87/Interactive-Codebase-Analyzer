@@ -5,7 +5,7 @@ from langchain_mistralai import MistralAIEmbeddings
 
 from app.core.config import settings
 from app.db.neo4j.neo4j_repository import CodebaseRepository
-from app.services.reranker import JinaAPIReranker
+from app.services.reranker.jina_reranker import JinaAPIReranker
 
 
 class HybridCodeSearch:

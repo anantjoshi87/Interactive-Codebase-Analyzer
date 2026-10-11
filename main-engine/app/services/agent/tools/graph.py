@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.tools import tool
 
 from app.db.neo4j.neo4j_repository import CodebaseRepository
+from app.db.neo4j.neo4j_client import neo4j_client
 
 
 class GraphTools:
@@ -146,6 +147,59 @@ class GraphTools:
             "end_line": node.get("end_line"),
         }
 
+    def trace_execution_flow(
+        source_symbol: str,
+        candidate_target_symbols: List[str],
+        max_depth: int = 6,
+    ) -> List[Dict[str, Any]]:
+        """
+        Finds verified execution call paths from a starting symbol to any reachable
+        candidate target symbols up to max_depth.
+        Filters out any target symbols that have no valid topological call chain from the source.
+        """
+        bounded_depth = min(max(1, max_depth), 8)
+
+        cypher = f"""
+        MATCH (start:CodeUnit)
+        WHERE start.id = $source_symbol 
+        OR start.qualified_name = $source_symbol 
+        OR start.symbol_name = $source_symbol
+        WITH start LIMIT 1
+
+        MATCH (target:CodeUnit)
+        WHERE (target.id IN $target_symbols 
+            OR target.qualified_name IN $target_symbols 
+            OR target.symbol_name IN $target_symbols)
+        AND start <> target
+
+        MATCH path = shortestPath((start)-[:CALLS*1..{bounded_depth}]->(target))
+        RETURN 
+            target.qualified_name AS target_name,
+            target.file_path AS target_file,
+            [n IN nodes(path) | n.qualified_name] AS call_chain,
+            length(path) AS depth
+        ORDER BY depth ASC
+        LIMIT 3
+        """
+
+        results = neo4j_client.execute_query(
+            cypher,
+            {
+                "source_symbol": source_symbol,
+                "target_symbols": candidate_target_symbols,
+            },
+        )
+
+        return [
+            {
+                "target": r["target_name"],
+                "file": r["target_file"],
+                "call_chain": " -> ".join(r["call_chain"]),
+                "depth": r["depth"],
+            }
+            for r in results
+        ]
+
 
 def build_graph_tools(
     repository: CodebaseRepository,
@@ -158,38 +212,42 @@ def build_graph_tools(
 
     return [
         tool(
-            service.get_neighbors,
-            name="get_neighbors",
+            "get_neighbors",
             description=(
                 "Explore nodes connected to a code node. "
                 "Use relationship types and direction to perform "
                 "targeted graph traversal. This is the main tool "
                 "for investigating code relationships."
             ),
-        ),
+        )(service.get_neighbors),
         tool(
-            service.find_callers,
-            name="find_callers",
+            "find_callers",
             description=(
                 "Find code units that call the specified node. "
                 "Use for questions such as 'who calls this function?'"
             ),
-        ),
+        )(service.find_callers),
         tool(
-            service.find_callees,
-            name="find_callees",
+            "find_callees",
             description=(
                 "Find code units called by the specified node. "
                 "Use for questions such as 'what does this function call?'"
             ),
-        ),
+        )(service.find_callees),
         tool(
-            service.find_paths,
-            name="find_paths",
+            "find_paths",
             description=(
                 "Find candidate paths between two known nodes. "
                 "Use when both endpoints are known and the agent "
                 "needs to understand how they are connected."
             ),
-        ),
+        )(service.find_paths),
+        tool(
+            "trace_execution_flow",
+            description=(
+                "Find verified execution call paths from a starting symbol to any reachable "
+                "candidate target symbols up to max_depth. Filters out any target symbols that "
+                "have no valid topological call chain from the source."
+            ),
+        )(service.trace_execution_flow),
     ]

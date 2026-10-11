@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Embeddings / Reranking
     JINA_API_KEY: str | None = None
 
+    REPO_PATH: str | None = None
+
     # Other Services
     REDIS_URL: str | None = None
     PINECONE_API_KEY: str | None = None

@@ -77,4 +77,5 @@ class Neo4jClient:
 
 
 # Global singleton instance
+
 neo4j_client = Neo4jClient()

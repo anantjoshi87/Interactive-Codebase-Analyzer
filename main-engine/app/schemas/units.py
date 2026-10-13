@@ -28,7 +28,8 @@ class CodeUnit(BaseUnit):
 
     parent_symbol_id: Optional[str] = None
 
-    # 0-based lines and columns match SCIP definitions cleanly
+    # Internal parser/resolution coordinates are 0-based. Graph persistence
+    # converts line bounds to 1-based inclusive values for consumers.
     start_line: int
     end_line: int
     start_col: int = 0

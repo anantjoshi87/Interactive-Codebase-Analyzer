@@ -1,3 +1,5 @@
+# python -m app.services.agent.test_agent_workflow
+
 import asyncio
 from rich.console import Console
 from rich.panel import Panel
@@ -60,7 +62,7 @@ async def run_query(query: str):
 async def main():
     # 1. Test Deterministic Comparison Recipe
     await run_query(
-        "How does UserService.register_user handle user validation and notifications when creating a user?"
+        "Explain me this repository's codebase architecture."
     )
 
 

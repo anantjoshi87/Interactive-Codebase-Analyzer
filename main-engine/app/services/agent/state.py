@@ -1,7 +1,7 @@
 import operator
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
 
 
@@ -21,6 +21,16 @@ class SubTask(BaseModel):
         default_factory=dict,
         description="Strictly literal input parameters matching tool signatures. No placeholders.",
     )
+
+    @field_validator("task_id", mode="before")
+    @classmethod
+    def normalize_task_id(cls, value: Any) -> Any:
+        """Accept common LLM labels such as ``task_1`` while storing an int."""
+        if isinstance(value, str):
+            normalized = value.strip().removeprefix("task_")
+            if normalized.isdigit():
+                return int(normalized)
+        return value
 
 
 class RouterDecision(BaseModel):

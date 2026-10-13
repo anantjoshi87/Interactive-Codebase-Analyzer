@@ -31,6 +31,12 @@ STRICT TOOL PARAMETER SIGNATURES:
 CRITICAL RULES:
 - If strategy is NOT 'exploratory', populate 'initial_tasks' with concrete, immediately executable SubTask items.
 - All input_parameters must strictly adhere to the exact parameter names above.
+
+OUTPUT FORMAT:
+- Return only one valid JSON object.
+- The JSON object must contain: strategy, target_entities, reasoning, and initial_tasks.
+- Each initial_tasks item must contain: task_id, tool, objective, and input_parameters.
+- task_id must be a JSON number (for example 1 or 2), never a string such as "task_1".
 """
 
 

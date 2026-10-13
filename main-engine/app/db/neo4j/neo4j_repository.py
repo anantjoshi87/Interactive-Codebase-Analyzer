@@ -115,23 +115,25 @@ class CodebaseRepository:
         self,
         symbol: str,
     ) -> List[Dict[str, Any]]:
-
         query = """
-        MATCH (n)
+        MATCH (n:CodeUnit)
         WHERE
             n.qualified_name = $symbol
             OR n.symbol_name = $symbol
             OR n.id = $symbol
+            OR n.qualified_name ENDS WITH ('.' + $symbol)
+            OR n.id ENDS WITH ('::' + replace($symbol, '.', '::'))
 
         RETURN n
-
         ORDER BY
             CASE
                 WHEN n.qualified_name = $symbol THEN 0
-                WHEN n.symbol_name = $symbol THEN 1
-                WHEN n.id = $symbol THEN 2
-                ELSE 3
+                WHEN n.qualified_name ENDS WITH ('.' + $symbol) THEN 1
+                WHEN n.symbol_name = $symbol THEN 2
+                WHEN n.id = $symbol THEN 3
+                ELSE 4
             END
+        LIMIT 5
         """
 
         results = self.client.execute_query(

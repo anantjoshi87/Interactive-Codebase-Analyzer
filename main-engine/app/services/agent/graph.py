@@ -2,10 +2,12 @@ from functools import partial
 from langgraph.graph import StateGraph, START, END
 
 from app.services.agent.state import AgentState, QueryStrategy
-from app.services.agent.router import router_node
-from app.services.agent.orchestrator import orchestrator_node
-from app.services.agent.dispatcher import tool_dispatcher_node
-from app.services.agent.synthesizer import synthesizer_node
+from app.services.agent.nodes import (
+    orchestrator_node,
+    router_node,
+    synthesizer_node,
+    tool_dispatcher_node,
+)
 
 
 def route_after_router(state: AgentState) -> str:

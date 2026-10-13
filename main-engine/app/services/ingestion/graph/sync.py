@@ -29,6 +29,15 @@ class GraphSync:
             u_type = p.get("unit_type", "code")
 
             if u_type == "code":
+                # Tree-sitter and SCIP use zero-based line coordinates internally,
+                # but graph consumers (and read_code_snippet) use one-based,
+                # inclusive source lines. Convert only at the persistence boundary
+                # so internal symbol resolution remains zero-based.
+                if isinstance(p.get("start_line"), int):
+                    p["start_line"] += 1
+                if isinstance(p.get("end_line"), int):
+                    p["end_line"] += 1
+
                 if "globals" in p and isinstance(p["globals"], list):
                     p["globals_json"] = json.dumps(p["globals"])
                 else:

@@ -18,56 +18,68 @@ TOOL CAPABILITIES:
 - get_neighbors(node_id: str, relationship_types: list[str], direction: str)
 - web_search(query: str)
 
-CRITICAL EXPANSION & CODE INSPECTION RULES:
+CRITICAL EXPANSION & EXECUTION RULES:
 1. PHASE 1 (DISCOVERY):
-   - When no code units are known, use 'get_symbol' or 'search_codebase' to locate candidates.
+- When no code units are known, use 'get_symbol' or 'search_codebase' to locate candidates.
+
 2. PHASE 2 (FETCHING CODE IMPLEMENTATIONS):
-   - When symbols/classes are identified, you MUST inspect their actual implementation before synthesizing.
-   - PREFERRED: Call 'get_node_context(node_ids=[...])' with the discovered node IDs. It automatically slices the code from disk.
-   - ALTERNATIVE: Call 'read_code_snippet(file_path=..., start_line=..., end_line=...)' using the coordinates shown in the discovered units list.
-3. TERMINATION:
-   - Only set 'is_ready_to_synthesize=True' when you have actual code implementations, method bodies, or call paths to answer the question thoroughly.
+- When symbols/classes are identified, you MUST inspect their actual implementation before synthesizing.
+- PREFERRED: Call 'get_node_context(node_ids=[...])' with the discovered node IDs. It automatically slices the code from disk.
+- ALTERNATIVE: Call 'read_code_snippet(file_path=..., start_line=..., end_line=...)' using coordinates from discovered units.
+
+3. DEDUPLICATION (PREVENT SEARCH LOOPS):
+- NEVER issue a search query or symbol lookup that has already been executed in earlier rounds.
+- Do not repeat queries with minor variations (e.g. if 'auth' and 'jwt' returned empty, do not query 'token' or 'auth middleware').
+
+4. TERMINATION & MISSING FEATURES:
+- Set 'is_ready_to_synthesize=True' (with 'next_tasks': []) when:
+  a) You have collected sufficient code implementations and call paths to answer the question, OR
+  b) Initial discovery searches returned empty results, indicating the requested feature is NOT implemented in this codebase.
+- Do NOT force additional searches if a concept does not exist. Let the Synthesizer report the feature's absence.
+
+OUTPUT FORMAT:
+- Return only one valid JSON object.
+- The JSON object must contain: reasoning, is_ready_to_synthesize, and next_tasks.
+- Each next_tasks item must contain: task_id, tool, objective, and input_parameters.
+- task_id must be a JSON number (for example 1 or 2), never a string such as "task_1".
 """
 
 
 def _format_context_for_planner(gathered_context: List[Dict[str, Any]]) -> str:
-    """
-    Extracts essential navigation coordinates (ID, file, lines)
-    from previous tool outputs without token-heavy embeddings or truncation.
-    """
     if not gathered_context:
         return "No prior facts collected. This is Round 1 (Discovery Phase)."
 
-    formatted_lines = ["Discovered Code Units and Coordinates:"]
+    formatted_lines = []
+    executed_queries = []
 
     for item in gathered_context:
         tool_name = item.get("tool")
         data = item.get("data")
         task_id = item.get("task_id")
 
+        if tool_name in {"search_codebase", "get_symbol"}:
+            executed_queries.append(f"{tool_name}: {item.get('summary')}")
+
         if not data:
-            formatted_lines.append(f"- Task {task_id} ({tool_name}): No results found.")
+            formatted_lines.append(
+                f"- Task {task_id} ({tool_name}): Returned 0 results."
+            )
             continue
 
-        # If data is a list of Neo4j node dicts (from get_symbol, search_codebase, get_file)
         if isinstance(data, list):
             formatted_lines.append(f"\n[Task {task_id} Results from {tool_name}]:")
             for node in data:
                 if isinstance(node, dict) and "id" in node:
-                    node_id = node.get("id")
-                    file_path = node.get("file_path")
-                    st = node.get("start_line")
-                    end = node.get("end_line")
-                    name = node.get("qualified_name") or node.get("symbol_name")
                     formatted_lines.append(
-                        f"  * Node ID: '{node_id}' | Symbol: '{name}' | File: '{file_path}' (Lines {st}-{end})"
+                        f"  * Node ID: '{node.get('id')}' | Symbol: '{node.get('qualified_name')}' | File: '{node.get('file_path')}' (Lines {node.get('start_line')}-{node.get('end_line')})"
                     )
                 else:
-                    formatted_lines.append(f"  * {str(node)[:180]}")
-        else:
-            formatted_lines.append(f"- Task {task_id} ({tool_name}): {str(data)[:250]}")
+                    formatted_lines.append(f"  * {str(node)[:150]}")
 
-    return "\n".join(formatted_lines)
+    history_block = "Executed Queries History:\n" + "\n".join(
+        f"- {q}" for q in executed_queries
+    )
+    return history_block + "\n\nDiscovered Code Units:\n" + "\n".join(formatted_lines)
 
 
 async def orchestrator_node(state: AgentState) -> Dict[str, Any]:

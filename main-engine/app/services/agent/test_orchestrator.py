@@ -1,7 +1,7 @@
 import asyncio
 from rich.console import Console
 from rich.table import Table
-from app.services.agent.orchestrator import orchestrator_node
+from app.services.agent.nodes import orchestrator_node
 
 console = Console()
 

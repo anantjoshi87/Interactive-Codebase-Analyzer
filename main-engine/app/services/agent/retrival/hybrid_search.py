@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import Any, Dict, List, Optional
 from langchain_core.documents import Document
@@ -7,8 +8,12 @@ from app.core.config import settings
 from app.db.neo4j.neo4j_repository import CodebaseRepository
 from app.services.reranker.jina_reranker import JinaAPIReranker
 
+# Limit Jina concurrency to 2 to prevent "Concurrency limit exceeded"
+_jina_semaphore = asyncio.Semaphore(2)
+
 
 class HybridCodeSearch:
+
     def __init__(
         self,
         repository: CodebaseRepository,
@@ -23,24 +28,26 @@ class HybridCodeSearch:
 
     @staticmethod
     def _sanitize_lucene_query(text: str) -> str:
+        """Strips syntax characters but adds wildcard & fuzzy matching
+
+        so 'registration' matches 'register', 'register_user', etc.
         """
-        Strips Lucene special operators and formats terms with OR logic
-        to prevent syntax exceptions on natural language queries.
-        """
-        # Remove Lucene reserved syntax characters: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
-        cleaned = re.sub(r"[\+\-\&\|\!\(\)\{\}\[\]\^\"~*\?\:\\/]", " ", text)
+        cleaned = re.sub(r"[\+\-\&\|\!\(\)\{\}\[\]\^\"*\?\:\\/]", " ", text)
         words = [w.strip() for w in cleaned.split() if len(w.strip()) > 1]
         if not words:
             return "*"
-        # Join as an OR query: 'find OR user OR profile'
-        return " OR ".join(words)
+
+        clauses = []
+        for w in words:
+            # Exact match, prefix match, and fuzzy match
+            clauses.append(f"{w} OR {w}* OR {w}~1")
+        return " OR ".join(clauses)
 
     async def search(
         self,
         query: str,
         top_k: int = 8,
     ) -> List[Dict[str, Any]]:
-        # Candidate pool: pull 2x-3x top_k to give the cross-encoder sufficient candidates
         candidate_k = max(top_k * 3, 15)
 
         # 1. Embed query
@@ -59,7 +66,7 @@ class HybridCodeSearch:
             top_k=candidate_k,
         )
 
-        # 4. Stage 1: Fast Heuristic Fusion (RRF) to deduplicate & select top candidate pool
+        # 4. Stage 1: Reciprocal Rank Fusion (RRF)
         rrf_candidates = self._rrf_merge(
             vector_results=vector_results,
             keyword_results=keyword_results,
@@ -69,8 +76,7 @@ class HybridCodeSearch:
         if not rrf_candidates:
             return []
 
-        # 5. Stage 2: Neural Cross-Encoder Reranking via Jina
-        # Convert candidates to LangChain Documents for the reranker
+        # 5. Stage 2: Reranking with Concurrency Lock & Fallback Guard
         documents_to_rerank = [
             Document(
                 page_content=(
@@ -83,14 +89,24 @@ class HybridCodeSearch:
             for c in rrf_candidates[:candidate_k]
         ]
 
-        reranked_docs = await self.reranker.rerank_documents(
-            query=query,
-            documents=documents_to_rerank,
-            top_n=top_k,
-            min_score=0.40,  # Filter out low-confidence hallucinations
-        )
+        reranked_docs = []
+        try:
+            async with _jina_semaphore:
+                reranked_docs = await self.reranker.rerank_documents(
+                    query=query,
+                    documents=documents_to_rerank,
+                    top_n=top_k,
+                    min_score=0.15,  # Lowered from 0.40 to prevent false negatives
+                )
+        except Exception:
+            # If Jina throws rate limit or network error, silently fall back to RRF
+            reranked_docs = []
 
-        # Format final output
+        # SAFETY NET: If cross-encoder scored everything low or errored out,
+        # fallback to the top RRF candidates rather than returning []
+        if not reranked_docs:
+            return rrf_candidates[:top_k]
+
         final_results = []
         for doc in reranked_docs:
             meta = doc.metadata

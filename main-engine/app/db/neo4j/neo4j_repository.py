@@ -111,36 +111,49 @@ class CodebaseRepository:
     # Exact symbol lookup
     # =========================================================
 
+    def get_all_symbol_names(self) -> List[str]:
+        """Fetches all indexed symbol names and qualified names from Neo4j."""
+        query = """
+        MATCH (n:CodeUnit)
+        RETURN DISTINCT coalesce(n.symbol_name, n.name, n.qualified_name) AS name
+        """
+        records = self.client.execute_query(query)
+        names = []
+        for r in records:
+            if r.get("name"):
+                names.append(r["name"])
+        return names
+
     def get_symbol(
         self,
         symbol: str,
     ) -> List[Dict[str, Any]]:
+        """
+        Resolves symbols by exact, case-insensitive, or suffix dot-matching.
+        """
         query = """
         MATCH (n:CodeUnit)
         WHERE
             n.qualified_name = $symbol
             OR n.symbol_name = $symbol
             OR n.id = $symbol
+            OR toLower(n.symbol_name) = toLower($symbol)
+            OR toLower(n.qualified_name) = toLower($symbol)
             OR n.qualified_name ENDS WITH ('.' + $symbol)
             OR n.id ENDS WITH ('::' + replace($symbol, '.', '::'))
 
         RETURN n
         ORDER BY
             CASE
-                WHEN n.qualified_name = $symbol THEN 0
-                WHEN n.qualified_name ENDS WITH ('.' + $symbol) THEN 1
-                WHEN n.symbol_name = $symbol THEN 2
-                WHEN n.id = $symbol THEN 3
+                WHEN n.symbol_name = $symbol THEN 0
+                WHEN n.qualified_name = $symbol THEN 1
+                WHEN toLower(n.symbol_name) = toLower($symbol) THEN 2
+                WHEN n.qualified_name ENDS WITH ('.' + $symbol) THEN 3
                 ELSE 4
             END
         LIMIT 5
         """
-
-        results = self.client.execute_query(
-            query,
-            {"symbol": symbol},
-        )
-
+        results = self.client.execute_query(query, {"symbol": symbol})
         return [dict(record["n"]) for record in results]
 
     # =========================================================

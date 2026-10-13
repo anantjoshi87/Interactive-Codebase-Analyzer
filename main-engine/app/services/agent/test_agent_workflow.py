@@ -62,7 +62,7 @@ async def run_query(query: str):
 async def main():
     # 1. Test Deterministic Comparison Recipe
     await run_query(
-        "Explain me this repository's codebase architecture."
+        "List all the functions present in this repo"
     )
 
 

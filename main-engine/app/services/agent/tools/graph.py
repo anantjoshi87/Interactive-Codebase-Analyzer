@@ -148,6 +148,7 @@ class GraphTools:
         }
 
     def trace_execution_flow(
+        self,
         source_symbol: str,
         candidate_target_symbols: List[str],
         max_depth: int = 6,

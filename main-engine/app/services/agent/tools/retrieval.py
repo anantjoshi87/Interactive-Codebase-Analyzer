@@ -1,9 +1,10 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 
 from app.db.neo4j.neo4j_repository import CodebaseRepository
 from app.services.agent.retrival.hybrid_search import HybridCodeSearch
+from app.services.agent.retrival.symbol_resolver import SymbolResolver
 
 
 class RetrievalTools:
@@ -16,6 +17,7 @@ class RetrievalTools:
     def __init__(self, repository: CodebaseRepository):
         self.repository = repository
         self.search_engine = HybridCodeSearch(repository)
+        self._resolver: Optional[SymbolResolver] = None
 
     # =========================================================
     # Semantic / keyword search
@@ -52,20 +54,32 @@ class RetrievalTools:
     # Exact symbol lookup
     # =========================================================
 
-    def get_symbol(
-        self,
-        symbol: str,
-    ) -> List[Dict[str, Any]]:
-        """
-        Find a symbol by:
-        - qualified_name
-        - symbol_name
-        - node id
-        """
+    def _get_resolver(self) -> SymbolResolver:
+        """Lazy loads the in-memory symbol cache once."""
+        if self._resolver is None:
+            symbols = self.repository.get_all_symbol_names()
+            self._resolver = SymbolResolver(symbols)
+        return self._resolver
 
-        nodes = self.repository.get_symbol(symbol)
+    def get_symbol(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves a symbol from Neo4j, transparently auto-correcting
+        typos, casing, and spacing before querying.
+        """
+        resolver = self._get_resolver()
 
-        return [self._serialize_node(node) for node in nodes]
+        # 1. Resolve typos / casing / 'class ' prefix
+        corrected_symbol, match = resolver.resolve(symbol)
+
+        # 2. Query Neo4j with the corrected identifier
+        results = self.repository.get_symbol(corrected_symbol)
+
+        # 3. If still empty and input contained dots (e.g. UserService.register), try leaf
+        if not results and "." in corrected_symbol:
+            leaf = corrected_symbol.split(".")[-1]
+            results = self.repository.get_symbol(leaf)
+
+        return results
 
     # =========================================================
     # File lookup
@@ -102,8 +116,6 @@ class RetrievalTools:
             "start_line": node.get("start_line"),
             "end_line": node.get("end_line"),
         }
-
-    
 
 
 def build_retrieval_tools(

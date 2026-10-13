@@ -1,59 +1,96 @@
 import operator
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 from typing_extensions import TypedDict
 
 
 class QueryStrategy(str, Enum):
-    COMPARISON = "comparison"  # Comparing two classes, methods, or modules
-    BLAST_RADIUS = "blast_radius"  # Upstream caller analysis / impact checking
-    FLOW_TRACE = "flow_trace"  # Tracing execution paths from A to B
-    LOCAL_INSPECT = "local_inspect"  # What does a specific symbol do
-    EXPLORATORY = "exploratory"  # Broad questions with unknown symbols (auth, cache)
+    COMPARISON = "comparison"
+    BLAST_RADIUS = "blast_radius"
+    FLOW_TRACE = "flow_trace"
+    LOCAL_INSPECT = "local_inspect"
+    EXPLORATORY = "exploratory"
 
 
 class SubTask(BaseModel):
-    task_id: int = Field(description="Unique incremental integer ID")
-    tool: str = Field(description="Tool name to execute from TOOL_REGISTRY")
-    objective: str = Field(description="Purpose of this task")
-    input_parameters: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Strictly literal input parameters matching tool signatures. No placeholders.",
-    )
+    task_id: int = 1
+    tool: str
+    objective: str = ""
+    input_parameters: Dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("task_id", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def normalize_task_id(cls, value: Any) -> Any:
-        """Accept common LLM labels such as ``task_1`` while storing an int."""
-        if isinstance(value, str):
-            normalized = value.strip().removeprefix("task_")
-            if normalized.isdigit():
-                return int(normalized)
-        return value
+    def normalize_subtask(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        # Shortcut Case: LLM output {"search_codebase": {"query": "...", "top_k": 5}}
+        standard_keys = {"task_id", "tool", "objective", "input_parameters"}
+        if not any(k in data for k in standard_keys) and len(data) == 1:
+            tool_name, params = next(iter(data.items()))
+            return {
+                "task_id": 1,
+                "tool": tool_name,
+                "objective": f"Execute {tool_name}",
+                "input_parameters": (
+                    params if isinstance(params, dict) else {"query": str(params)}
+                ),
+            }
+
+        # Flat Case: LLM output {"tool": "search_codebase", "query": "..."} without "input_parameters"
+        if "tool" in data and "input_parameters" not in data:
+            tool = data["tool"]
+            params = {k: v for k, v in data.items() if k not in standard_keys}
+            return {
+                "task_id": data.get("task_id", 1),
+                "tool": tool,
+                "objective": data.get("objective", f"Execute {tool}"),
+                "input_parameters": params or data.get("parameters", {}),
+            }
+
+        # Missing optional fields: Provide safe defaults
+        if "task_id" not in data:
+            data["task_id"] = 1
+        if "objective" not in data:
+            data["objective"] = f"Execute {data.get('tool', 'tool')}"
+        if "input_parameters" not in data:
+            data["input_parameters"] = {}
+
+        return data
 
 
 class RouterDecision(BaseModel):
-    strategy: QueryStrategy = Field(description="Classified execution strategy")
+    strategy: QueryStrategy = Field(
+        default=QueryStrategy.EXPLORATORY,
+        description="The routing recipe to follow for this query.",
+    )
+    reasoning: str = Field(
+        default="No reasoning provided.",
+        description="Brief explanation of why this strategy was chosen.",
+    )
     target_entities: List[str] = Field(
         default_factory=list,
-        description="Explicit symbols, files, or concepts extracted from the prompt",
+        description="Named classes, functions, or files mentioned verbatim in the query.",
     )
-    reasoning: str = Field(description="Why this strategy was selected")
     initial_tasks: List[SubTask] = Field(
         default_factory=list,
-        description="Pre-computed recipe tasks if strategy is not exploratory",
+        description="Pre-allocated tasks for deterministic recipes (empty for exploratory).",
     )
 
 
 class OrchestratorDecision(BaseModel):
-    reasoning: str
+    reasoning: str = Field(
+        default="No reasoning provided.",
+        description="Architectural evaluation of facts.",
+    )
     is_ready_to_synthesize: bool = Field(
-        description="True if collected context is sufficient to answer the query"
+        default=False,
+        description="True if collected facts are sufficient to write the final answer.",
     )
     next_tasks: List[SubTask] = Field(
         default_factory=list,
-        description="Next batch of parallel tasks (empty if ready to synthesize)",
+        description="Parallel batch of subtasks to execute in the next round.",
     )
 
 
